@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, WebSocket
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -529,8 +529,9 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy, shell_factory
         return False  # 浏览器的 WebSocket 一定带 Origin
 
     @app.websocket(bp + "/api/servers/{server_id}/terminal/ws")
-    async def terminal_ws(websocket: WebSocket, server_id: int, ticket: str = ""):
+    async def terminal_ws(websocket: WebSocket, server_id: int):
         state: State = app.state.core
+        # Origin 和会话在握手阶段校验（失败 = 握手被拒，HTTP 403）
         if not ws_origin_ok(websocket):
             await websocket.close(code=1008)
             return
@@ -541,6 +542,13 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy, shell_factory
         except (BadSignature, SignatureExpired, TypeError, KeyError):
             await websocket.close(code=1008)
             return
+        # 票据放在第一条消息里而不是 URL 查询串，避免出现在 uvicorn/nginx 访问日志中
+        await websocket.accept()
+        try:
+            first = json.loads(await asyncio.wait_for(websocket.receive_text(), timeout=10))
+            ticket = str(first.get("ticket", "")) if isinstance(first, dict) and first.get("t") == "auth" else ""
+        except (asyncio.TimeoutError, ValueError, WebSocketDisconnect, KeyError, RuntimeError):
+            ticket = ""
         grant = state.tickets.consume(ticket, sid) if ticket else None
         if not grant or grant.server_id != server_id:
             await websocket.close(code=1008)
@@ -551,7 +559,6 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy, shell_factory
             await websocket.close(code=1013)
             return
         state.terminals += 1
-        await websocket.accept()
         shell = shell_factory(grant.addresses, record["ssh_port"], record["ssh_user"], record["fingerprint"],
                               settings.ssh_connect_timeout)
 
@@ -581,6 +588,8 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy, shell_factory
             logger.info("terminal opened for server record %s", server_id)
             await control("ready", m="已连接", saved=save)
             await bridge(websocket, shell, settings.terminal_idle_seconds, control)
+        except WebSocketDisconnect:
+            pass  # 浏览器关闭页面 / 断网：正常结束
         except Exception:  # noqa: BLE001
             logger.exception("terminal session error")
         finally:
@@ -652,7 +661,7 @@ async def bridge(websocket: WebSocket, shell: Any, idle_seconds: int, control) -
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in done:
             exc = task.exception()
-            if exc and not isinstance(exc, (OSError, RuntimeError)):
+            if exc and not isinstance(exc, (OSError, RuntimeError, WebSocketDisconnect)):
                 logger.warning("terminal bridge ended: %s", type(exc).__name__)
     finally:
         for task in tasks:

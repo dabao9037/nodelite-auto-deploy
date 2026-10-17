@@ -394,6 +394,27 @@ def terminal_client(tmp_path, save_password=True, **overrides):
     return client, server_id, prefix
 
 
+class _Conn:
+    """Opens the terminal WebSocket and sends the ticket as the first message (like terminal.js)."""
+
+    def __init__(self, client, path, headers):
+        self.client, self.path, self.headers = client, path, headers
+
+    def __enter__(self):
+        url, _, query = self.path.partition("?ticket=")
+        self.cm = self.client.websocket_connect(url, headers=self.headers)
+        ws = self.cm.__enter__()
+        ws.send_text(json.dumps({"t": "auth", "ticket": query}))
+        return ws
+
+    def __exit__(self, *exc):
+        return self.cm.__exit__(*exc)
+
+
+def ws_open(client, path, headers):
+    return _Conn(client, path, headers)
+
+
 def ticket(client, server_id, prefix="", **body):
     token = csrf_of_prefixed(client, prefix)
     return client.post(f"{prefix}/api/servers/{server_id}/terminal", json=body, headers={"x-csrf-token": token})
@@ -424,7 +445,7 @@ def test_terminal_full_flow_uses_saved_password_and_resize(tmp_path):
     response = ticket(client, server_id, cols=100, rows=30)
     assert response.status_code == 200
     data = response.json()
-    with client.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
+    with ws_open(client, f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
         recv_until(ws, "ready")
         recv_bytes_containing(ws, b"welcome")
         ws.send_text(json.dumps({"t": "i", "d": "echo hello\r"}))
@@ -447,11 +468,11 @@ def test_ticket_is_single_use(tmp_path):
     client, server_id, _ = terminal_client(tmp_path)
     data = ticket(client, server_id).json()
     url = f"{data['ws_path']}?ticket={data['ticket']}"
-    with client.websocket_connect("ws://127.0.0.1:8780" + url, headers={"origin": ORIGIN}) as ws:
+    with ws_open(client, "ws://127.0.0.1:8780" + url, headers={"origin": ORIGIN}) as ws:
         recv_until(ws, "ready")
         ws.send_text(json.dumps({"t": "bye"}))
     with pytest.raises(WebSocketDisconnect) as info:
-        with client.websocket_connect("ws://127.0.0.1:8780" + url, headers={"origin": ORIGIN}) as ws:
+        with ws_open(client, "ws://127.0.0.1:8780" + url, headers={"origin": ORIGIN}) as ws:
             ws.receive_text()
     assert info.value.code == 1008
 
@@ -463,12 +484,12 @@ def test_ticket_requires_csrf_and_is_session_bound(tmp_path):
     other = TestClient(client.app, base_url=ORIGIN)  # same app, different session
     login(other)
     with pytest.raises(WebSocketDisconnect) as info:
-        with other.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
+        with ws_open(other, f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
             ws.receive_text()
     assert info.value.code == 1008
     # Burned by the failed attempt, so the rightful owner cannot reuse it either.
     with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
+        with ws_open(client, f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
             ws.receive_text()
 
 
@@ -482,7 +503,7 @@ def test_ws_rejects_bad_origin(tmp_path, headers):
     client, server_id, _ = terminal_client(tmp_path)
     data = ticket(client, server_id).json()
     with pytest.raises(WebSocketDisconnect) as info:
-        with client.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers=headers) as ws:
+        with ws_open(client, f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers=headers) as ws:
             ws.receive_text()
     assert info.value.code == 1008
     assert FakeShell.instances == []
@@ -493,11 +514,11 @@ def test_ws_rejects_missing_session(tmp_path):
     data = ticket(client, server_id).json()
     anon = TestClient(client.app, base_url=ORIGIN)  # same app, no session cookie
     with pytest.raises(WebSocketDisconnect) as info:
-        with anon.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
+        with ws_open(anon, f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
             ws.receive_text()
     assert info.value.code == 1008
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}", headers={"origin": ORIGIN}) as ws:
+    with pytest.raises(WebSocketDisconnect):  # no ticket at all
+        with ws_open(client, f"ws://127.0.0.1:8780{data['ws_path']}?ticket=", headers={"origin": ORIGIN}) as ws:
             ws.receive_text()
     assert FakeShell.instances == []
 
@@ -507,14 +528,14 @@ def test_terminal_without_saved_password_prompts_then_one_time_password(tmp_path
     first = ticket(client, server_id)
     assert first.status_code == 409 and first.json()["need_password"] is True
     data = ticket(client, server_id, ssh_password="typed-once-pw").json()
-    with client.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
+    with ws_open(client, f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
         assert recv_until(ws, "ready")["saved"] is False
         ws.send_text(json.dumps({"t": "bye"}))
     assert FakeShell.instances[0].password == "typed-once-pw"
     assert client.get(f"/api/servers/{server_id}").json()["has_ssh_password"] is False
     # Ticking "save" stores it after a successful login.
     data = ticket(client, server_id, ssh_password="typed-and-saved", save_password=True).json()
-    with client.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
+    with ws_open(client, f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
         assert recv_until(ws, "ready")["saved"] is True
         ws.send_text(json.dumps({"t": "bye"}))
     assert client.app.state.core.store.ssh_password(server_id) == "typed-and-saved"
@@ -524,7 +545,7 @@ def test_terminal_host_key_mismatch_refused(tmp_path):
     client, server_id, _ = terminal_client(tmp_path)
     FakeShell.mode = "mismatch"
     data = ticket(client, server_id).json()
-    with client.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
+    with ws_open(client, f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
         body = recv_until(ws, "hostkey")
     assert body["expected"] == FP and body["actual"] == "SHA256:otherKEY"
     record = client.get(f"/api/servers/{server_id}").json()
@@ -535,7 +556,7 @@ def test_terminal_auth_failure_does_not_save(tmp_path):
     client, server_id, _ = terminal_client(tmp_path, save_password=False)
     FakeShell.mode = "auth"
     data = ticket(client, server_id, ssh_password="wrong-pw", save_password=True).json()
-    with client.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
+    with ws_open(client, f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
         body = recv_until(ws, "error")
     assert body["need_password"] is True
     assert client.get(f"/api/servers/{server_id}").json()["has_ssh_password"] is False
@@ -560,7 +581,7 @@ def test_terminal_under_base_path(tmp_path):
     assert client.get(f"/terminal/{server_id}").status_code == 404
     data = ticket(client, server_id, prefix=prefix).json()
     assert data["ws_path"] == f"/p4th/api/servers/{server_id}/terminal/ws"
-    with client.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
+    with ws_open(client, f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}", headers={"origin": ORIGIN}) as ws:
         recv_until(ws, "ready")
         ws.send_text(json.dumps({"t": "bye"}))
 
@@ -585,3 +606,18 @@ def test_main_page_has_records_tab_and_save_checkbox(tmp_path):
     for label in ("连接服务器", "重新部署", "查看历史", "删除记录"):
         assert label in page
     assert ADMIN and ADMIN_PW
+
+
+def test_ws_ticket_never_in_url_and_auth_message_required(tmp_path):
+    from pathlib import Path
+
+    assert "?ticket=" not in Path("app/static/terminal.js").read_text(encoding="utf-8")
+    client, server_id, _ = terminal_client(tmp_path)
+    data = ticket(client, server_id).json()
+    # Ticket in the query string is ignored: the server waits for the auth message.
+    with pytest.raises(WebSocketDisconnect) as info:
+        with client.websocket_connect(f"ws://127.0.0.1:8780{data['ws_path']}?ticket={data['ticket']}",
+                                      headers={"origin": ORIGIN}) as ws:
+            ws.send_text(json.dumps({"t": "i", "d": "ls\r"}))
+            ws.receive_text()
+    assert info.value.code == 1008 and FakeShell.instances == []

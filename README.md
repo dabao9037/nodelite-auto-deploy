@@ -84,7 +84,7 @@ WEB_LISTEN_HOST=0.0.0.0 WEB_ALLOW_PUBLIC_LISTEN=1 bash <(curl -fsSL https://raw.
 
 - 没有保存密码时会提示输入；输入的密码只用于这一次，勾选「保存 SSH 密码」并登录成功后才会保存
 - 30 分钟无操作自动断开（`TERMINAL_IDLE_SECONDS`），同时最多 `MAX_TERMINALS`（默认 4）个终端
-- 连接流程：页面先 POST（带 CSRF）申请一张 60 秒内有效、只能用一次、绑定当前登录会话的票据，再用它建立 WebSocket；WebSocket 还会校验登录 Cookie 和 Origin 必须与 Host 一致
+- 连接流程：页面先 POST（带 CSRF）申请一张 60 秒内有效、只能用一次、绑定当前登录会话的票据，再建立 WebSocket 并把票据作为第一条消息发送（不放在 URL 里，不会进入访问日志）；握手时还会校验登录 Cookie 和 Origin 必须与 Host 一致
 - 放在 nginx 后面时，`location` 需要支持 WebSocket：
 
 ```nginx

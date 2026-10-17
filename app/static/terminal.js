@@ -90,8 +90,10 @@
       return;
     }
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(`${scheme}://${location.host}${body.ws_path}?ticket=${encodeURIComponent(body.ticket)}`);
+    ws = new WebSocket(`${scheme}://${location.host}${body.ws_path}`);
     ws.binaryType = 'arraybuffer';
+    // 一次性票据作为第一条消息发送（不放在 URL 里，避免进入访问日志）
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'auth', ticket: body.ticket }));
     connected(true);
     ws.onmessage = (event) => {
       if (typeof event.data !== 'string') { term.write(new Uint8Array(event.data)); return; }
