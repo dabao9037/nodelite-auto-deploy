@@ -14,7 +14,7 @@
 </head>
 <body class="term-body">
 <header class="topbar term-bar">
-  <div class="brand"><span class="logo" aria-hidden="true">NL</span><div><h1>连接服务器 <code>{{title}}</code></h1><p id="term-status" class="muted" role="status" aria-live="polite">准备连接…</p></div></div>
+  <div class="brand"><span class="logo" aria-hidden="true">NL</span><div><h1>连接服务器 <code>{{title}}</code></h1><p class="muted term-line"><span id="term-state" class="term-state wait">连接中</span> <span id="term-status" role="status" aria-live="polite">准备连接…</span></p></div></div>
   <div class="actions">
     <button type="button" id="reconnect" class="ghost" hidden>重新连接</button>
     <button type="button" id="disconnect" class="danger">断开连接</button>

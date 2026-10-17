@@ -7,7 +7,6 @@ import json
 import logging
 import re
 import secrets
-import threading
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -35,7 +34,8 @@ from .security import (
 )
 from .store import ServerStore
 from .tasks import Reporter, TaskStore
-from .terminal import IDLE_TIMEOUT, ShellSession, TerminalError, TicketStore, clamp_size
+from .terminal import ShellSession, TerminalError, TicketStore, clamp_size
+from .termsession import TerminalManager
 
 BASE = Path(__file__).resolve().parent
 logger = logging.getLogger("nodelite_auto_deploy")
@@ -94,6 +94,8 @@ class TerminalRequest(BaseModel):
     save_password: bool = False
     cols: int = 120
     rows: int = 32
+    # 断线重连：上次连接拿到的续接令牌（放在 POST 正文里，绝不进 URL）
+    resume: str | None = Field(default=None, max_length=128)
 
 
 class TrustKeyRequest(BaseModel):
@@ -111,12 +113,15 @@ class State:
         self.background: set[asyncio.Task] = set()
         self.store = ServerStore(settings.data_dir)
         self.tickets = TicketStore()
-        self.terminals = 0
+        self.terminals = TerminalManager(
+            settings.max_terminals, settings.terminal_resume_seconds, settings.terminal_idle_seconds
+        )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
+    await app.state.core.terminals.shutdown()
     for task in list(app.state.core.background):
         task.cancel()
     if app.state.core.background:
@@ -293,6 +298,8 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy, shell_factory
             return RedirectResponse(bp + "/login", 303)
         if not csrf_valid(settings.session_secret, sid, csrf):
             raise HTTPException(403, "CSRF 校验失败")
+        # 退出登录：该会话保留在后台的终端立即真正关闭，令牌失效
+        await app.state.core.terminals.close_sid(sid)
         response = RedirectResponse(bp + "/login", 303)
         response.delete_cookie(SESSION_COOKIE, path=bp + "/")
         return response
@@ -501,7 +508,18 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy, shell_factory
     async def create_terminal_ticket(server_id: int, payload: TerminalRequest, sid: str = Depends(require_csrf)):
         state: State = app.state.core
         record = record_or_404(server_id)
-        if state.terminals >= settings.max_terminals:
+        cols, rows = clamp_size(payload.cols, payload.rows)
+        ws_path = f"{bp}/api/servers/{server_id}/terminal/ws"
+        if payload.resume:
+            # 续接后台保留的 SSH 会话：不重新登录、不需要密码；令牌绑定登录会话和服务器记录
+            if not state.task_limiter.allow(f"term-resume:{sid}", 120, 300):
+                raise HTTPException(429, "重连过于频繁，请稍后再试")
+            session = state.terminals.find(payload.resume, sid, server_id)
+            if session is None:
+                return JSONResponse({"detail": "会话已过期", "expired": True}, 410)
+            ticket = state.tickets.issue(sid, server_id, (), cols=cols, rows=rows, resume=session)
+            return {"ticket": ticket, "ws_path": ws_path}
+        if state.terminals.full():
             raise HTTPException(429, f"同时打开的终端已达上限（{settings.max_terminals} 个）")
         if not state.task_limiter.allow(f"term:{sid}", 30, 300):
             raise HTTPException(429, "连接过于频繁，请稍后再试")
@@ -512,12 +530,11 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy, shell_factory
             target = await resolve_and_validate_target(record["host"], settings)
         except (ValueError, TargetRejected) as exc:
             raise HTTPException(422, str(exc)) from exc
-        cols, rows = clamp_size(payload.cols, payload.rows)
         ticket = state.tickets.issue(
             sid, server_id, target.addresses, password or None, bool(password and payload.save_password), cols, rows
         )
         del password, payload
-        return {"ticket": ticket, "ws_path": f"{bp}/api/servers/{server_id}/terminal/ws"}
+        return {"ticket": ticket, "ws_path": ws_path}
 
     def ws_origin_ok(websocket: WebSocket) -> bool:
         origin = websocket.headers.get("origin")
@@ -544,27 +561,61 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy, shell_factory
             return
         # 票据放在第一条消息里而不是 URL 查询串，避免出现在 uvicorn/nginx 访问日志中
         await websocket.accept()
+        offset = 0
         try:
             first = json.loads(await asyncio.wait_for(websocket.receive_text(), timeout=10))
             ticket = str(first.get("ticket", "")) if isinstance(first, dict) and first.get("t") == "auth" else ""
-        except (asyncio.TimeoutError, ValueError, WebSocketDisconnect, KeyError, RuntimeError):
+            offset = int(first.get("offset") or 0) if ticket else 0
+        except (asyncio.TimeoutError, ValueError, TypeError, WebSocketDisconnect, KeyError, RuntimeError,
+                AttributeError):
             ticket = ""
         grant = state.tickets.consume(ticket, sid) if ticket else None
         if not grant or grant.server_id != server_id:
             await websocket.close(code=1008)
             return
-        record = state.store.get(server_id)
-        if not record or state.terminals >= settings.max_terminals:
+        manager = state.terminals
+        try:
+            if grant.resume is not None:
+                session = grant.resume
+                grant.resume = None
+                if session.closed or session.server_id != server_id or not secrets.compare_digest(session.sid, sid):
+                    await websocket.send_text(json.dumps({"t": "expired", "m": "会话已过期"}, ensure_ascii=False))
+                    await websocket.close(code=4000)
+                    return
+                try:
+                    await asyncio.to_thread(session.shell.resize, grant.cols, grant.rows)
+                except Exception:  # noqa: BLE001 - harmless
+                    pass
+                logger.info("terminal resumed for server record %s", server_id)
+                await manager.serve(session, websocket, offset, True)
+                return
+            await open_and_serve(websocket, grant, server_id, sid)
+        except WebSocketDisconnect:
+            pass  # 浏览器关闭页面 / 断网：会话保留，等待续接
+        except Exception:  # noqa: BLE001
+            logger.exception("terminal session error")
+        finally:
             grant.password = None
+            try:
+                await websocket.close()
+            except Exception:  # noqa: BLE001 - already closed by the peer
+                pass
+
+    async def open_and_serve(websocket: WebSocket, grant: Any, server_id: int, sid: str) -> None:
+        state: State = app.state.core
+        manager = state.terminals
+        record = state.store.get(server_id)
+        if not record or manager.full():
             await websocket.close(code=1013)
             return
-        state.terminals += 1
-        shell = shell_factory(grant.addresses, record["ssh_port"], record["ssh_user"], record["fingerprint"],
-                              settings.ssh_connect_timeout)
 
         async def control(kind: str, **values: Any) -> None:
             await websocket.send_text(json.dumps({"t": kind, **values}, ensure_ascii=False))
 
+        manager.active += 1  # 占一个名额（打开中的也算）
+        registered = False
+        shell = shell_factory(grant.addresses, record["ssh_port"], record["ssh_user"], record["fingerprint"],
+                              settings.ssh_connect_timeout)
         try:
             password = grant.password or state.store.ssh_password(server_id) or ""
             save, grant.password = grant.save, None
@@ -585,88 +636,17 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy, shell_factory
             if save:
                 state.store.set_ssh_password(server_id, password)
             del password
+            session = manager.add(sid, server_id, shell)
+            registered = True
             logger.info("terminal opened for server record %s", server_id)
-            await control("ready", m="已连接", saved=save)
-            await bridge(websocket, shell, settings.terminal_idle_seconds, control)
-        except WebSocketDisconnect:
-            pass  # 浏览器关闭页面 / 断网：正常结束
-        except Exception:  # noqa: BLE001
-            logger.exception("terminal session error")
+            await manager.serve(session, websocket, 0, False, saved=save)
         finally:
-            state.terminals -= 1
-            # shield：即使本协程被取消（浏览器断开 / 服务停止），SSH 连接也一定会被关闭
-            closer = asyncio.ensure_future(asyncio.to_thread(shell.close))
-            try:
+            if not registered:
+                manager.active -= 1
+                closer = asyncio.ensure_future(asyncio.to_thread(shell.close))
                 await asyncio.shield(closer)
-            except asyncio.CancelledError:
-                raise
-            else:
-                try:
-                    await websocket.close()
-                except Exception:  # noqa: BLE001 - already closed by the peer
-                    pass
 
     return app
-
-
-async def bridge(websocket: WebSocket, shell: Any, idle_seconds: int, control) -> None:
-    """Pump bytes between the browser and the SSH channel until either side ends."""
-    idle_seconds = idle_seconds or IDLE_TIMEOUT
-    write_lock = threading.Lock()
-
-    def write(data: bytes) -> None:
-        with write_lock:
-            shell.write(data)
-
-    async def downstream() -> None:
-        while True:
-            data = await asyncio.to_thread(shell.read)
-            if data is None:
-                await control("closed", m="远程会话已结束")
-                return
-            if data:
-                await websocket.send_bytes(data)
-
-    async def upstream() -> None:
-        while True:
-            try:
-                message = await asyncio.wait_for(websocket.receive(), timeout=idle_seconds)
-            except asyncio.TimeoutError:
-                await control("closed", m=f"超过 {idle_seconds // 60} 分钟没有操作，已自动断开")
-                return
-            if message["type"] == "websocket.disconnect":
-                return
-            raw = message.get("text")
-            if raw is None:
-                data = message.get("bytes") or b""
-                if data:
-                    await asyncio.to_thread(write, data[:65536])
-                continue
-            try:
-                body = json.loads(raw)
-            except ValueError:
-                continue
-            if not isinstance(body, dict):
-                continue
-            if body.get("t") == "i" and isinstance(body.get("d"), str):
-                await asyncio.to_thread(write, body["d"][:65536].encode("utf-8", errors="replace"))
-            elif body.get("t") == "r":
-                cols, rows = clamp_size(body.get("c"), body.get("r"))
-                await asyncio.to_thread(shell.resize, cols, rows)
-            elif body.get("t") == "bye":
-                return
-
-    tasks = [asyncio.create_task(downstream()), asyncio.create_task(upstream())]
-    try:
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        for task in done:
-            exc = task.exception()
-            if exc and not isinstance(exc, (OSError, RuntimeError, WebSocketDisconnect)):
-                logger.warning("terminal bridge ended: %s", type(exc).__name__)
-    finally:
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def run() -> None:  # pragma: no cover - exercised by the systemd unit

@@ -31,10 +31,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check app/static/app.js && node --check app/static/terminal.js
+      - run: node --check app/static/app.js && node --check app/static/terminal.js && node --check app/static/compat.js
       - name: Security gates
         run: |
-          ! grep -RniE 'localStorage|sessionStorage' app/static --exclude-dir=vendor
+          ! grep -RniE 'localStorage' app/static --exclude-dir=vendor
+          # 只有终端页可以用 sessionStorage（仅保存断线续接令牌，不存密码）
+          ! grep -RniE 'sessionStorage' app/static --exclude-dir=vendor --exclude=terminal.js
+          ! grep -RnE 'catch \{' app/static --exclude-dir=vendor
           ! grep -RniE 'localStorage|sessionStorage' app/static/vendor/xterm/*.js
           ! grep -RnE 'sshpass' install.sh app
           grep -q 'User=nlad' nodelite-auto-deploy.service

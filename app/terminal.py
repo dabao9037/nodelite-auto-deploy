@@ -13,6 +13,7 @@ import socket
 import threading
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 import paramiko
 
@@ -37,6 +38,7 @@ class Ticket:
     save: bool = False  # save that password after a successful login
     cols: int = 120
     rows: int = 32
+    resume: Any = None  # TermSession to reattach (resume ticket): no SSH login, no password
 
 
 @dataclass
@@ -46,11 +48,13 @@ class TicketStore:
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def issue(self, sid: str, server_id: int, addresses: tuple[str, ...], password: str | None = None,
-              save: bool = False, cols: int = 120, rows: int = 32) -> str:
+              save: bool = False, cols: int = 120, rows: int = 32, resume: Any = None) -> str:
         token = secrets.token_urlsafe(32)
         with self._lock:
             self._purge()
-            self.tickets[token] = Ticket(sid, server_id, time.time() + self.ttl, addresses, password, save, cols, rows)
+            self.tickets[token] = Ticket(
+                sid, server_id, time.time() + self.ttl, addresses, password, save, cols, rows, resume
+            )
         return token
 
     def consume(self, token: str, sid: str) -> Ticket | None:
@@ -67,6 +71,7 @@ class TicketStore:
             ticket = self.tickets.pop(key, None)
             if ticket:
                 ticket.password = None
+                ticket.resume = None
 
 
 def clamp_size(cols, rows) -> tuple[int, int]:

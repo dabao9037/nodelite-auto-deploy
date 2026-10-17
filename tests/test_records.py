@@ -461,7 +461,7 @@ def test_terminal_full_flow_uses_saved_password_and_resize(tmp_path):
         if shell.closed:
             break
         time.sleep(0.02)
-    assert shell.closed and client.app.state.core.terminals == 0
+    assert shell.closed and client.app.state.core.terminals.active == 0
 
 
 def test_ticket_is_single_use(tmp_path):
@@ -564,7 +564,7 @@ def test_terminal_auth_failure_does_not_save(tmp_path):
 
 def test_terminal_concurrency_cap(tmp_path):
     client, server_id, _ = terminal_client(tmp_path, max_terminals=1)
-    client.app.state.core.terminals = 1
+    client.app.state.core.terminals.active = 1
     assert ticket(client, server_id).status_code == 429
 
 

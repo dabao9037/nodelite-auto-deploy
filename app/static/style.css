@@ -89,6 +89,11 @@ a.button { display: inline-block; text-decoration: none; border-radius: .5rem; p
 .term-main { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: .5rem; gap: .5rem; }
 .term-card { max-width: 640px; width: 100%; margin: 0 auto; }
 .term-card form { display: grid; gap: .5rem; }
+.term-line { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.term-state { font-size: .75rem; padding: 0 .5rem; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+.term-state.ok { background: #e3f4ea; color: var(--ok); }
+.term-state.retry, .term-state.wait { background: #fff4d6; color: var(--warn); }
+.term-state.off { background: #fde7e5; color: var(--bad); }
 .terminal { flex: 1; min-height: 0; background: #0f172a; }
 @media (max-width: 640px) {
   .grid { grid-template-columns: 1fr; }

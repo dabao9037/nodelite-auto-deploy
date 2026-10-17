@@ -28,7 +28,7 @@
     const response = await fetch(`${base}${path}`, Object.assign({ credentials: 'same-origin', cache: 'no-store' }, options, { headers }));
     if (response.status === 401) { location.href = `${base}/login`; throw new Error('请先登录'); }
     let body = {};
-    try { body = await response.json(); } catch { body = {}; }
+    try { body = await response.json(); } catch (e) { body = {}; }
     if (!response.ok) { const error = new Error(body.detail || `请求失败（${response.status}）`); error.body = body; throw error; }
     return body;
   };
@@ -194,7 +194,7 @@
     try {
       await navigator.clipboard.writeText(value);
       text('copy-status', '已复制到剪贴板');
-    } catch {
+    } catch (e) {
       text('copy-status', '复制失败，请手动选择文本复制');
     }
   });
@@ -261,7 +261,7 @@
   }
 
   async function copyText(value, msg) {
-    try { await navigator.clipboard.writeText(value); msg.textContent = '已复制到剪贴板'; } catch { msg.textContent = '复制失败，请手动选择文本复制'; }
+    try { await navigator.clipboard.writeText(value); msg.textContent = '已复制到剪贴板'; } catch (e) { msg.textContent = '复制失败，请手动选择文本复制'; }
   }
 
   async function revealPassword(id) {

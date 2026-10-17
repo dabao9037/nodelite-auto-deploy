@@ -74,6 +74,8 @@ class Settings:
     data_dir: str = "/var/lib/nodelite-auto-deploy"
     max_terminals: int = 4
     terminal_idle_seconds: int = 1800
+    # 网页终端断线后 SSH 会话在后台保留多久（秒），期间可续接；0 = 断线即关闭
+    terminal_resume_seconds: int = 600
 
     @classmethod
     def load(cls) -> "Settings":
@@ -127,6 +129,7 @@ class Settings:
             data_dir=os.getenv("WEB_DATA_DIR", "").strip() or "/var/lib/nodelite-auto-deploy",
             max_terminals=_int("MAX_TERMINALS", 4, 1, 32),
             terminal_idle_seconds=_int("TERMINAL_IDLE_SECONDS", 1800, 60, 86400),
+            terminal_resume_seconds=_int("TERMINAL_RESUME_SECONDS", 600, 0, 86400),
         )
         if not is_loopback_host(settings.listen_host) and not settings.allow_public_listen:
             raise RuntimeError(
