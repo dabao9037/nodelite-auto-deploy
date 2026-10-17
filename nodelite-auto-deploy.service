@@ -1,0 +1,37 @@
+[Unit]
+Description=NodeLite Auto Deploy (web SSH installer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nlad
+Group=nlad
+WorkingDirectory=/opt/nodelite-auto-deploy/current
+EnvironmentFile=/etc/nodelite-auto-deploy.env
+ExecStart=/opt/nodelite-auto-deploy/venv/bin/python -m app.main
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

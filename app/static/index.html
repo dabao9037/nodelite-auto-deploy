@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="csrf-token" content="{{csrf}}">
+<title>NodeLite 一键部署</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="topbar">
+  <div class="brand"><span class="logo" aria-hidden="true">NL</span><div><h1>NodeLite 一键部署</h1><p class="muted">填写服务器信息，自动安装 NodeLite 并返回面板地址</p></div></div>
+  <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{csrf}}"><button type="submit" class="ghost">退出登录</button></form>
+</header>
+
+<main id="main" class="layout">
+  <section class="card" aria-labelledby="form-title">
+    <h2 id="form-title">目标服务器</h2>
+    <p class="notice">仅用于你拥有或已获授权管理的服务器。SSH 密码只在内存中用于本次连接，不写入日志、磁盘或浏览器存储。</p>
+    <form id="deploy-form" novalidate>
+      <div class="grid">
+        <div class="field wide">
+          <label for="host">服务器 IP / 域名 <span aria-hidden="true">*</span></label>
+          <input id="host" name="host" required maxlength="255" autocomplete="off" inputmode="url" placeholder="203.0.113.10" aria-describedby="host-hint">
+          <small id="host-hint" class="muted">支持 IPv4、IPv6 或域名</small>
+        </div>
+        <div class="field">
+          <label for="ssh_port">SSH 端口</label>
+          <input id="ssh_port" name="ssh_port" type="number" min="1" max="65535" inputmode="numeric" placeholder="22" aria-describedby="port-hint">
+          <small id="port-hint" class="muted">留空默认 22</small>
+        </div>
+        <div class="field">
+          <label for="ssh_user">SSH 用户名</label>
+          <input id="ssh_user" name="ssh_user" maxlength="32" autocomplete="off" placeholder="root" aria-describedby="user-hint">
+          <small id="user-hint" class="muted">留空默认 root；非 root 需免密 sudo</small>
+        </div>
+        <div class="field wide">
+          <label for="ssh_password">SSH 密码 <span aria-hidden="true">*</span></label>
+          <input id="ssh_password" name="ssh_password" type="password" required maxlength="512" autocomplete="off">
+        </div>
+      </div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="disable_ipv6" name="disable_ipv6" checked> 关闭 IPv6</label>
+        <label class="check"><input type="checkbox" id="authorized" name="authorized" required> 我确认拥有或已获授权管理这台服务器</label>
+      </div>
+      <p id="form-error" class="error" role="alert"></p>
+      <button id="submit" type="submit" class="primary">开始部署</button>
+    </form>
+  </section>
+
+  <section class="card" id="progress" aria-labelledby="progress-title" hidden>
+    <h2 id="progress-title">部署进度 <span id="status-pill" class="pill">排队中</span></h2>
+    <ol id="steps" class="steps">
+      <li data-step="connect">连接</li>
+      <li data-step="preflight">检查系统</li>
+      <li data-step="install">安装 NodeLite</li>
+      <li data-step="ipv6">关闭 IPv6</li>
+      <li data-step="info">读取面板信息</li>
+    </ol>
+    <p id="status-message" class="status" role="status" aria-live="polite"></p>
+    <details open>
+      <summary>实时日志</summary>
+      <pre id="log" class="log" tabindex="0" aria-label="部署日志" aria-live="off"></pre>
+    </details>
+  </section>
+
+  <section class="card result" id="result" aria-labelledby="result-title" hidden tabindex="-1">
+    <h2 id="result-title">部署完成</h2>
+    <p class="notice warn">以下信息只显示这一次，最多在本程序内存中保留 {{ttl}} 分钟，请立即保存。</p>
+    <dl class="kv">
+      <dt>面板地址</dt>
+      <dd><a id="r-url" href="#" target="_blank" rel="noopener noreferrer"></a> <button type="button" class="copy" data-copy="r-url">复制</button></dd>
+      <dt id="r-alt-label" hidden>备用地址</dt>
+      <dd id="r-alt-row" hidden><a id="r-alt" href="#" target="_blank" rel="noopener noreferrer"></a> <button type="button" class="copy" data-copy="r-alt">复制</button></dd>
+      <dt>用户名</dt>
+      <dd><code id="r-user"></code> <button type="button" class="copy" data-copy="r-user">复制</button></dd>
+      <dt>密码</dt>
+      <dd><code id="r-pass"></code> <button type="button" class="copy" data-copy="r-pass">复制</button></dd>
+      <dt>NodeLite 版本</dt><dd id="r-version"></dd>
+      <dt>IPv6 状态</dt><dd id="r-ipv6"></dd>
+      <dt>面板可达性</dt><dd id="r-reach"></dd>
+      <dt>SSH 主机密钥</dt><dd><code id="r-fp"></code><br><small class="muted">首次连接时自动信任（未保存）。请与服务商控制台中看到的指纹核对。</small></dd>
+    </dl>
+    <p id="copy-status" class="muted" role="status" aria-live="polite"></p>
+    <button type="button" id="forget" class="ghost">立即从内存清除结果</button>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

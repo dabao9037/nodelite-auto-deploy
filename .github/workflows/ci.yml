@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: ruff check app tests
+      - run: pytest -q
+      - name: Shell syntax
+        run: |
+          bash -n install.sh
+          bash -n nladmin
+      - name: ShellCheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck install.sh nladmin
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check app/static/app.js
+      - name: Security gates
+        run: |
+          ! grep -RniE 'localStorage|sessionStorage' app/static
+          ! grep -RnE 'sshpass' install.sh app
+          grep -q 'User=nlad' nodelite-auto-deploy.service
+          grep -q 'WEB_LISTEN_HOST:-127.0.0.1' install.sh

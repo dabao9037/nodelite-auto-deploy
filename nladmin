@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# NodeLite Auto Deploy management CLI (installed to /usr/local/bin/nladmin).
+set -euo pipefail
+SERVICE="nodelite-auto-deploy.service"
+INSTALLER="/opt/nodelite-auto-deploy/current/install.sh"
+[[ $EUID -eq 0 ]] || { echo "请使用 root 运行 nladmin" >&2; exit 1; }
+case "${1:-status}" in
+  status) systemctl --no-pager --full status "$SERVICE" || true; bash "$INSTALLER" info ;;
+  logs) exec journalctl -u "$SERVICE" -f --no-pager ;;
+  restart) systemctl restart "$SERVICE" && echo "已重启" ;;
+  update) exec bash <(curl -fsSL "https://raw.githubusercontent.com/dabao9037/nodelite-auto-deploy/main/install.sh") update ;;
+  password) exec bash "$INSTALLER" password "${2:-}" ;;
+  info) exec bash "$INSTALLER" info ;;
+  uninstall) exec bash "$INSTALLER" uninstall ;;
+  *) echo "用法: nladmin {status|logs|restart|update|password [新密码]|info|uninstall}" >&2; exit 2 ;;
+esac

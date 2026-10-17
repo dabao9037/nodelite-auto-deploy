@@ -1,0 +1,8 @@
+fastapi==0.116.1
+starlette==0.47.3
+uvicorn==0.35.0
+paramiko==4.0.0
+httpx==0.28.1
+python-multipart==0.0.20
+itsdangerous==2.2.0
+pydantic==2.11.7

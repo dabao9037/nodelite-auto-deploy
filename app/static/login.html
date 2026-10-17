@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>登录 · NodeLite 一键部署</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+<main class="card login-card" aria-labelledby="login-title">
+  <div class="brand"><span class="logo" aria-hidden="true">NL</span><div><h1 id="login-title">NodeLite 一键部署</h1><p class="muted">管理员登录</p></div></div>
+  <p class="error" role="alert">{{error}}</p>
+  <form method="post" action="/login" autocomplete="on">
+    <input type="hidden" name="csrf" value="{{csrf}}">
+    <label for="username">管理员用户名</label>
+    <input id="username" name="username" required maxlength="128" autocomplete="username" autofocus>
+    <label for="password">管理员密码</label>
+    <input id="password" name="password" type="password" required maxlength="512" autocomplete="current-password">
+    <button type="submit" class="primary">登录</button>
+  </form>
+  <p class="muted small">本程序会处理服务器 root 密码，请只通过 SSH 隧道、VPN 或 HTTPS 访问。</p>
+</main>
+</body>
+</html>
