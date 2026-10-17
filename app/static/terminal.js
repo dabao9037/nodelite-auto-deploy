@@ -139,11 +139,12 @@
   }
 
   // 心跳：每 20 秒互发 ping；45 秒什么都没收到就认为连接已死，立即重连
+  let lastPingAt = 0;
   setInterval(() => {
     if (!ws || !(live || resuming)) return;
     if (Date.now() - lastMessageAt > DEAD_MS) { scheduleReconnect(true); return; }
-    send({ t: 'ping' });
-  }, HEARTBEAT_MS);
+    if (Date.now() - lastPingAt >= HEARTBEAT_MS) { lastPingAt = Date.now(); send({ t: 'ping' }); }
+  }, 5000);
 
   // 从后台切回 / 网络恢复：连着的就探测一下（5 秒没回应就重连），断着的就马上重连
   function probe() {
