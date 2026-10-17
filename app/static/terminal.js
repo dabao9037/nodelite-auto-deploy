@@ -30,6 +30,10 @@
   const reconnectButton = document.getElementById('reconnect');
   const container = document.getElementById('terminal');
 
+  if (typeof window.Terminal !== 'function' || !window.FitAddon) {
+    status.textContent = '终端组件没有加载成功（网络中断或浏览器版本过旧），请刷新页面，或换用 Chrome / Edge 新版浏览器';
+    return;
+  }
   const term = new window.Terminal({
     cursorBlink: true,
     convertEol: false,

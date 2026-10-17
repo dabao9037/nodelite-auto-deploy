@@ -573,6 +573,8 @@ def test_terminal_under_base_path(tmp_path):
     page = client.get(f"/p4th/terminal/{server_id}")
     assert page.status_code == 200
     assert 'src="/p4th/static/vendor/xterm/xterm.js"' in page.text
+    assert page.text.index('static/compat.js') < page.text.index('vendor/xterm/xterm.js')
+    assert client.get("/p4th/static/compat.js").status_code == 200
     assert '<meta name="base-path" content="/p4th">' in page.text
     csp = page.headers["content-security-policy"]
     assert "style-src 'self' 'nonce-" in csp and "unsafe-inline" not in csp

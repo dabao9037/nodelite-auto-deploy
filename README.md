@@ -178,7 +178,7 @@ MIT
 
 | 组件 | 版本 | 许可 | 来源 |
 | --- | --- | --- | --- |
-| @xterm/xterm（`xterm.js`、`xterm.css`） | 6.0.0 | MIT（`LICENSE-xterm`） | `https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz`，sha512 `TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==` |
-| @xterm/addon-fit（`addon-fit.js`） | 0.11.0 | MIT（`LICENSE-addon-fit`） | `https://registry.npmjs.org/@xterm/addon-fit/-/addon-fit-0.11.0.tgz`，sha512 `jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==` |
+| @xterm/xterm（`xterm.js`、`xterm.css`） | 5.5.0 | MIT（`LICENSE-xterm`） | `https://registry.npmjs.org/@xterm/xterm/-/xterm-5.5.0.tgz`，sha512 `hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A==` |
+| @xterm/addon-fit（`addon-fit.js`） | 0.10.0 | MIT（`LICENSE-addon-fit`） | `https://registry.npmjs.org/@xterm/addon-fit/-/addon-fit-0.10.0.tgz`，sha512 `UFYkDm4HUahf2lnEyHvio51TNGiLK66mqP2JoATy7hRZeXaGMRDr00JiSF7m63vR5WKATF605yEggJKsw0JpMQ==` |
 
 Python 依赖新增 `cryptography==50.0.2`（与 paramiko 4.0.0 已依赖的版本一致）和 `wsproto==1.3.2`（uvicorn 0.35.0 的 WebSocket 实现，启动时固定 `ws="wsproto"`）。
