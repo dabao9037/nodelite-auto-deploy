@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 from dataclasses import dataclass
 
 WEAK_PASSWORDS = {"password", "changeme", "admin123456", "replace-with-at-least-14-random-characters"}
@@ -31,6 +32,19 @@ def is_loopback_host(host: str) -> bool:
         return False
 
 
+BASE_PATH_RE = re.compile(r"^(/[A-Za-z0-9_-]{1,64})*$")
+
+
+def normalize_base_path(value: str) -> str:
+    value = (value or "").strip()
+    if not value or value == "/":
+        return ""
+    value = "/" + value.strip("/")
+    if not BASE_PATH_RE.match(value):
+        raise RuntimeError("WEB_BASE_PATH 只能包含字母、数字、下划线和连字符，例如 /abc123")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     admin_user: str
@@ -52,6 +66,10 @@ class Settings:
     listen_port: int
     allow_public_listen: bool
     nodelite_installer_url: str
+    # 子路径部署（反代时域名后的根路径），如 "/abc123"；空 = 根目录
+    base_path: str = ""
+    # 只在 127.0.0.1 后面有可信反代（nginx）时开启：用 X-Real-IP 作为客户端地址做登录限速
+    trust_proxy: bool = False
 
     @classmethod
     def load(cls) -> "Settings":
@@ -100,6 +118,8 @@ class Settings:
                 "NODELITE_INSTALLER_URL",
                 "https://raw.githubusercontent.com/dabao9037/nodelite/main/install.sh",
             ).strip(),
+            base_path=normalize_base_path(os.getenv("WEB_BASE_PATH", "")),
+            trust_proxy=_flag("WEB_TRUST_PROXY", False),
         )
         if not is_loopback_host(settings.listen_host) and not settings.allow_public_listen:
             raise RuntimeError(

@@ -9,7 +9,7 @@ from app.config import Settings
 from app.deployer import DeploymentError
 from app.main import create_app
 
-from .conftest import ADMIN_PW, csrf_of, login, make_settings
+from .conftest import ADMIN, ADMIN_PW, csrf_of, login, make_settings
 
 SSH_PW = "Ssh-Root-Pass-XYZ-123"
 FAKE_RESULT = {
@@ -288,3 +288,60 @@ def test_static_assets_have_no_browser_storage():
 
     js = Path("app/static/app.js").read_text(encoding="utf-8")
     assert "localStorage" not in js and "sessionStorage" not in js
+
+
+def test_base_path_serves_everything_under_prefix():
+    import re as _re
+
+    client, _ = client_for(base_path="/p4th")
+    assert client.get("/login").status_code == 404
+    assert client.get("/p4th", follow_redirects=False).headers["location"] == "/p4th/"
+    assert client.get("/p4th/", follow_redirects=False).headers["location"] == "/p4th/login"
+    page = client.get("/p4th/login")
+    assert 'href="/p4th/static/style.css"' in page.text and 'action="/p4th/login"' in page.text
+    assert client.get("/p4th/static/style.css").status_code == 200
+    token = _re.search(r'name="csrf" value="([^"]+)"', page.text).group(1)
+    resp = client.post("/p4th/login", data={"username": ADMIN, "password": ADMIN_PW, "csrf": token}, follow_redirects=False)
+    assert resp.status_code == 303 and resp.headers["location"] == "/p4th/"
+    assert "Path=/p4th/" in resp.headers["set-cookie"]
+    home = client.get("/p4th/")
+    assert '<meta name="base-path" content="/p4th">' in home.text
+    csrf = _re.search(r'name="csrf-token" content="([^"]+)"', home.text).group(1)
+    created = client.post("/p4th/api/tasks", json=payload(), headers={"x-csrf-token": csrf})
+    assert created.status_code == 202
+    body = None
+    for _ in range(100):
+        body = client.get(f"/p4th/api/tasks/{created.json()['task_id']}").json()
+        if body["status"] in {"success", "failed"}:
+            break
+        time.sleep(0.02)
+    assert body["status"] == "success"
+
+
+def test_base_path_validation():
+    from app.config import normalize_base_path
+
+    assert normalize_base_path("") == "" and normalize_base_path("/") == ""
+    assert normalize_base_path("abc/") == "/abc"
+    for bad in ("/a b", "/../x", "/a?b"):
+        with pytest.raises(RuntimeError):
+            normalize_base_path(bad)
+
+
+def test_trust_proxy_uses_real_ip_for_login_limit():
+    import re as _re
+
+    # 反代场景：对端是 127.0.0.1（nginx），真实 IP 在 X-Real-IP
+    app = create_app(make_settings(trust_proxy=True, login_attempts=2))
+    client = TestClient(app, base_url="http://127.0.0.1:8780", client=("127.0.0.1", 50000))
+
+    def attempt(ip):
+        page = client.get("/login")
+        token = _re.search(r'name="csrf" value="([^"]+)"', page.text).group(1)
+        return client.post("/login", data={"username": ADMIN, "password": "wrong", "csrf": token},
+                           headers={"x-real-ip": ip}, follow_redirects=False).headers["location"]
+
+    assert attempt("1.1.1.1").endswith("error=1")
+    assert attempt("1.1.1.1").endswith("error=1")
+    assert attempt("1.1.1.1").endswith("error=2")
+    assert attempt("2.2.2.2").endswith("error=1")

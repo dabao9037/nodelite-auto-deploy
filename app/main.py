@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
-from .config import Settings
+from .config import Settings, is_loopback_host
 from .deployer import DeploymentError, DeploySpec, deploy
 from .security import (
     TargetRejected,
@@ -118,7 +118,8 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.core = State(settings)
-    app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
+    bp = settings.base_path  # 子路径前缀，空 = 根目录
+    app.mount(bp + "/static", StaticFiles(directory=BASE / "static"), name="static")
 
     def session_id(request: Request) -> str:
         token = request.cookies.get(SESSION_COOKIE, "")
@@ -136,7 +137,12 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy) -> FastAPI:
         return sid
 
     def client_key(request: Request) -> str:
-        return request.client.host if request.client else "unknown"
+        peer = request.client.host if request.client else "unknown"
+        if settings.trust_proxy and is_loopback_host(peer):
+            real = request.headers.get("x-real-ip", "").strip()
+            if real:
+                return real[:64]
+        return peer
 
     def same_origin(request: Request) -> bool:
         origin = request.headers.get("origin")
@@ -185,29 +191,29 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy) -> FastAPI:
                 messages.append(f"{field} 字段无效")
         return JSONResponse({"detail": "；".join(messages) or "请求无效"}, status_code=422)
 
-    @app.get("/healthz")
+    @app.get(bp + "/healthz")
     async def healthz():
         return {"status": "ok"}
 
-    @app.get("/login", response_class=HTMLResponse)
+    @app.get(bp + "/login", response_class=HTMLResponse)
     async def login_page(request: Request, error: str = ""):
         try:
             session_id(request)
-            return RedirectResponse("/", 303)
+            return RedirectResponse(bp + "/", 303)
         except HTTPException:
             pass
         nonce = secrets.token_urlsafe(24)
         messages = {"1": "用户名或密码错误", "2": "登录尝试过多，请稍后再试", "3": "页面已过期，请重试"}
         response = HTMLResponse(
-            render("login.html", csrf=app.state.core.pre_serializer.dumps(nonce), error=messages.get(error, ""))
+            render("login.html", csrf=app.state.core.pre_serializer.dumps(nonce), error=messages.get(error, ""), base=bp)
         )
         response.set_cookie(
             PRE_COOKIE, nonce, max_age=900, httponly=True, secure=settings.cookie_secure,
-            samesite="strict", path="/login",
+            samesite="strict", path=bp + "/login",
         )
         return response
 
-    @app.post("/login")
+    @app.post(bp + "/login")
     async def login(
         request: Request,
         username: str = Form(..., max_length=128),
@@ -216,55 +222,61 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy) -> FastAPI:
     ):
         state: State = app.state.core
         if not state.login_limiter.allow(client_key(request), settings.login_attempts, settings.login_window_seconds):
-            return RedirectResponse("/login?error=2", 303)
+            return RedirectResponse(bp + "/login?error=2", 303)
         try:
             nonce = state.pre_serializer.loads(csrf, max_age=900)
         except (BadSignature, SignatureExpired):
             nonce = None
         cookie = request.cookies.get(PRE_COOKIE, "")
         if not nonce or not cookie or not hmac.compare_digest(str(nonce), cookie):
-            return RedirectResponse("/login?error=3", 303)
+            return RedirectResponse(bp + "/login?error=3", 303)
         ok = hmac.compare_digest(username.encode(), settings.admin_user.encode())
         ok = hmac.compare_digest(password.encode(), settings.admin_password.encode()) and ok
         if not ok:
             logger.warning("login failed from %s", client_key(request))
-            return RedirectResponse("/login?error=1", 303)
+            return RedirectResponse(bp + "/login?error=1", 303)
         token = state.serializer.dumps({"sid": secrets.token_urlsafe(24)})
-        response = RedirectResponse("/", 303)
+        response = RedirectResponse(bp + "/", 303)
         response.set_cookie(
             SESSION_COOKIE, token, max_age=settings.session_ttl_seconds, httponly=True,
-            secure=settings.cookie_secure, samesite="strict", path="/",
+            secure=settings.cookie_secure, samesite="strict", path=bp + "/",
         )
-        response.delete_cookie(PRE_COOKIE, path="/login")
+        response.delete_cookie(PRE_COOKIE, path=bp + "/login")
         return response
 
-    @app.post("/logout")
+    @app.post(bp + "/logout")
     async def logout(request: Request, csrf: str = Form("", max_length=256)):
         try:
             sid = session_id(request)
         except HTTPException:
-            return RedirectResponse("/login", 303)
+            return RedirectResponse(bp + "/login", 303)
         if not csrf_valid(settings.session_secret, sid, csrf):
             raise HTTPException(403, "CSRF 校验失败")
-        response = RedirectResponse("/login", 303)
-        response.delete_cookie(SESSION_COOKIE, path="/")
+        response = RedirectResponse(bp + "/login", 303)
+        response.delete_cookie(SESSION_COOKIE, path=bp + "/")
         return response
 
-    @app.get("/", response_class=HTMLResponse)
+    if bp:
+        @app.get(bp)
+        async def base_redirect():
+            return RedirectResponse(bp + "/", 308)
+
+    @app.get(bp + "/", response_class=HTMLResponse)
     async def home(request: Request):
         try:
             sid = session_id(request)
         except HTTPException:
-            return RedirectResponse("/login", 303)
+            return RedirectResponse(bp + "/login", 303)
         return HTMLResponse(
             render(
                 "index.html",
                 csrf=csrf_token(settings.session_secret, sid),
                 ttl=str(settings.task_ttl_seconds // 60),
+                base=bp,
             )
         )
 
-    @app.post("/api/tasks", status_code=202)
+    @app.post(bp + "/api/tasks", status_code=202)
     async def create_task(payload: DeployRequest, sid: str = Depends(require_csrf)):
         state: State = app.state.core
         if not payload.authorized:
@@ -309,14 +321,14 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy) -> FastAPI:
         runner.add_done_callback(state.background.discard)
         return {"task_id": task.id, "status": task.status}
 
-    @app.get("/api/tasks/{task_id}")
+    @app.get(bp + "/api/tasks/{task_id}")
     async def get_task(task_id: str, since: int = 0, sid: str = Depends(session_id)):
         task = await app.state.core.tasks.get(task_id, sid)
         if not task:
             raise HTTPException(404, "任务不存在、已过期或无权访问")
         return task.public(max(0, since))
 
-    @app.delete("/api/tasks/{task_id}")
+    @app.delete(bp + "/api/tasks/{task_id}")
     async def delete_task(task_id: str, sid: str = Depends(require_csrf)):
         if not await app.state.core.tasks.discard(task_id, sid):
             raise HTTPException(404, "任务不存在、仍在运行或无权访问")

@@ -5,14 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta name="csrf-token" content="{{csrf}}">
+<meta name="base-path" content="{{base}}">
 <title>NodeLite 一键部署</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="{{base}}/static/style.css">
 </head>
 <body>
 <a class="skip" href="#main">跳到主要内容</a>
 <header class="topbar">
   <div class="brand"><span class="logo" aria-hidden="true">NL</span><div><h1>NodeLite 一键部署</h1><p class="muted">填写服务器信息，自动安装 NodeLite 并返回面板地址</p></div></div>
-  <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{csrf}}"><button type="submit" class="ghost">退出登录</button></form>
+  <form method="post" action="{{base}}/logout"><input type="hidden" name="csrf" value="{{csrf}}"><button type="submit" class="ghost">退出登录</button></form>
 </header>
 
 <main id="main" class="layout">
@@ -87,6 +88,6 @@
     <button type="button" id="forget" class="ghost">立即从内存清除结果</button>
   </section>
 </main>
-<script src="/static/app.js"></script>
+<script src="{{base}}/static/app.js"></script>
 </body>
 </html>

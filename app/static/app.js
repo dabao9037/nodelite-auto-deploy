@@ -1,6 +1,7 @@
 'use strict';
 (() => {
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
+  const base = (document.querySelector('meta[name="base-path"]') || {}).content || '';
   const form = document.getElementById('deploy-form');
   const submit = document.getElementById('submit');
   const formError = document.getElementById('form-error');
@@ -64,8 +65,8 @@
   async function poll() {
     if (!taskId) return;
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}?since=${since}`, { cache: 'no-store', credentials: 'same-origin' });
-      if (response.status === 401) { location.href = '/login'; return; }
+      const response = await fetch(`${base}/api/tasks/${encodeURIComponent(taskId)}?since=${since}`, { cache: 'no-store', credentials: 'same-origin' });
+      if (response.status === 401) { location.href = `${base}/login`; return; }
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail || '任务不可用');
       since = body.log_next;
@@ -105,7 +106,7 @@
     submit.textContent = '部署中…';
     result.hidden = true;
     try {
-      const response = await fetch('/api/tasks', {
+      const response = await fetch(`${base}/api/tasks`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json', 'x-csrf-token': csrf },
@@ -114,7 +115,7 @@
       payload.ssh_password = '';
       clearPassword();
       const body = await response.json();
-      if (response.status === 401) { location.href = '/login'; return; }
+      if (response.status === 401) { location.href = `${base}/login`; return; }
       if (!response.ok) throw new Error(body.detail || '创建任务失败');
       taskId = body.task_id; since = 0; log.textContent = '';
       progress.hidden = false;
@@ -144,7 +145,7 @@
 
   document.getElementById('forget').addEventListener('click', async () => {
     if (!taskId) return;
-    await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE', credentials: 'same-origin', headers: { 'x-csrf-token': csrf } });
+    await fetch(`${base}/api/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE', credentials: 'same-origin', headers: { 'x-csrf-token': csrf } });
     ['r-user', 'r-pass', 'r-fp'].forEach((id) => text(id, ''));
     result.hidden = true;
     taskId = null;
