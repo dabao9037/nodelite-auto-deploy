@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="csrf-token" content="{{csrf}}">
+<meta name="base-path" content="{{base}}">
+<meta name="server-id" content="{{server_id}}">
+<meta name="style-nonce" content="{{nonce}}">
+<title>终端 · {{title}}</title>
+<link rel="stylesheet" href="{{base}}/static/vendor/xterm/xterm.css">
+<link rel="stylesheet" href="{{base}}/static/style.css">
+</head>
+<body class="term-body">
+<header class="topbar term-bar">
+  <div class="brand"><span class="logo" aria-hidden="true">NL</span><div><h1>连接服务器 <code>{{title}}</code></h1><p id="term-status" class="muted" role="status" aria-live="polite">准备连接…</p></div></div>
+  <div class="actions">
+    <button type="button" id="reconnect" class="ghost" hidden>重新连接</button>
+    <button type="button" id="disconnect" class="danger">断开连接</button>
+    <a class="button ghost" href="{{base}}/">返回服务器记录</a>
+  </div>
+</header>
+<main id="main" class="term-main">
+  <section id="pw-box" class="card term-card" aria-labelledby="pw-title" hidden>
+    <h2 id="pw-title">输入 SSH 密码</h2>
+    <p class="muted small" id="pw-reason">该服务器没有保存 SSH 密码。</p>
+    <form id="pw-form" novalidate>
+      <label for="term-password">SSH 密码</label>
+      <input id="term-password" type="password" maxlength="512" autocomplete="off" required>
+      <label class="check"><input type="checkbox" id="term-save"> 保存 SSH 密码（加密存储，用于以后一键连接）</label>
+      <p id="pw-error" class="error" role="alert"></p>
+      <button type="submit" class="primary">连接</button>
+    </form>
+  </section>
+  <section id="key-box" class="card term-card" aria-labelledby="key-title" hidden>
+    <h2 id="key-title">⚠ SSH 主机密钥不一致，已拒绝连接</h2>
+    <p>服务器出示的主机密钥与记录中保存的不同。可能是服务器重装了系统，也可能是<strong>中间人攻击</strong>。密码没有发送。</p>
+    <dl class="kv">
+      <dt>记录中的指纹</dt><dd><code id="key-expected"></code></dd>
+      <dt>本次的指纹</dt><dd><code id="key-actual"></code></dd>
+    </dl>
+    <p class="muted small">请先在服务商控制台（VNC/救援控制台执行 <code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>）核对新指纹，确认无误后再信任。</p>
+    <button type="button" id="trust-key" class="danger">信任新密钥并重新连接</button>
+  </section>
+  <div id="terminal" class="terminal" aria-label="SSH 终端"></div>
+</main>
+<script src="{{base}}/static/vendor/xterm/xterm.js"></script>
+<script src="{{base}}/static/vendor/xterm/addon-fit.js"></script>
+<script src="{{base}}/static/terminal.js"></script>
+</body>
+</html>

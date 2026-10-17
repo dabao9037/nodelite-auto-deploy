@@ -17,9 +17,16 @@
 </header>
 
 <main id="main" class="layout">
+  <nav class="tabs" role="tablist" aria-label="功能">
+    <button type="button" role="tab" id="tab-deploy" aria-controls="panel-deploy" aria-selected="true">一键部署</button>
+    <button type="button" role="tab" id="tab-servers" aria-controls="panel-servers" aria-selected="false" tabindex="-1">服务器记录 <span id="server-count" class="pill"></span></button>
+  </nav>
+
+  <div id="panel-deploy" role="tabpanel" aria-labelledby="tab-deploy" class="stack">
   <section class="card" aria-labelledby="form-title">
     <h2 id="form-title">目标服务器</h2>
-    <p class="notice">仅用于你拥有或已获授权管理的服务器。SSH 密码只在内存中用于本次连接，不写入日志、磁盘或浏览器存储。</p>
+    <p class="notice">仅用于你拥有或已获授权管理的服务器。勾选「保存 SSH 密码」时，密码会用 AES-GCM 加密后保存在本程序的服务器上，用于以后一键连接；不勾选则只在内存中用于本次连接。密码从不写入日志或浏览器存储。</p>
+    <p id="redeploy-note" class="notice warn" hidden></p>
     <form id="deploy-form" novalidate>
       <div class="grid">
         <div class="field wide">
@@ -38,11 +45,13 @@
           <small id="user-hint" class="muted">留空默认 root；非 root 需免密 sudo</small>
         </div>
         <div class="field wide">
-          <label for="ssh_password">SSH 密码 <span aria-hidden="true">*</span></label>
-          <input id="ssh_password" name="ssh_password" type="password" required maxlength="512" autocomplete="off">
+          <label for="ssh_password">SSH 密码 <span aria-hidden="true" id="pw-star">*</span></label>
+          <input id="ssh_password" name="ssh_password" type="password" maxlength="512" autocomplete="off" aria-describedby="pw-hint">
+          <small id="pw-hint" class="muted"></small>
         </div>
       </div>
       <div class="checks">
+        <label class="check"><input type="checkbox" id="save_password" name="save_password" checked> 保存 SSH 密码（加密存储，用于以后一键连接）</label>
         <label class="check"><input type="checkbox" id="disable_ipv6" name="disable_ipv6" checked> 关闭 IPv6</label>
         <label class="check"><input type="checkbox" id="authorized" name="authorized" required> 我确认拥有或已获授权管理这台服务器</label>
       </div>
@@ -69,7 +78,7 @@
 
   <section class="card result" id="result" aria-labelledby="result-title" hidden tabindex="-1">
     <h2 id="result-title">部署完成</h2>
-    <p class="notice warn">以下信息只显示这一次，最多在本程序内存中保留 {{ttl}} 分钟，请立即保存。</p>
+    <p class="notice">已保存到「服务器记录」，以后可随时查看（面板密码加密存储）。本页结果最多在内存中保留 {{ttl}} 分钟。</p>
     <dl class="kv">
       <dt>面板地址</dt>
       <dd><a id="r-url" href="#" target="_blank" rel="noopener noreferrer"></a> <button type="button" class="copy" data-copy="r-url">复制</button></dd>
@@ -82,12 +91,53 @@
       <dt>NodeLite 版本</dt><dd id="r-version"></dd>
       <dt>IPv6 状态</dt><dd id="r-ipv6"></dd>
       <dt>面板可达性</dt><dd id="r-reach"></dd>
-      <dt>SSH 主机密钥</dt><dd><code id="r-fp"></code><br><small class="muted">首次连接时自动信任（未保存）。请与服务商控制台中看到的指纹核对。</small></dd>
+      <dt>SSH 主机密钥</dt><dd><code id="r-fp"></code><br><small class="muted">首次连接时自动信任并记录到服务器记录；以后连接会校验，不一致会拒绝。请与服务商控制台中看到的指纹核对。</small></dd>
     </dl>
     <p id="copy-status" class="muted" role="status" aria-live="polite"></p>
-    <button type="button" id="forget" class="ghost">立即从内存清除结果</button>
+    <div class="actions">
+      <button type="button" id="goto-servers" class="primary">查看服务器记录</button>
+      <button type="button" id="forget" class="ghost">从本页清除结果</button>
+    </div>
   </section>
+  </div>
+
+  <div id="panel-servers" role="tabpanel" aria-labelledby="tab-servers" class="stack" hidden>
+    <section class="card" aria-labelledby="servers-title">
+      <h2 id="servers-title">服务器记录</h2>
+      <p class="muted small">部署成功的服务器会自动出现在这里。面板密码和 SSH 密码均加密保存，列表中不返回密码。</p>
+      <p id="servers-status" class="status" role="status" aria-live="polite"></p>
+      <div id="servers" class="servers"></div>
+    </section>
+  </div>
 </main>
+
+<template id="server-card">
+  <article class="card server">
+    <header class="server-head">
+      <h3><span data-f="title"></span> <span data-f="status" class="pill"></span></h3>
+      <p class="muted small" data-f="when"></p>
+    </header>
+    <p class="notice bad" data-f="keywarn" hidden></p>
+    <dl class="kv">
+      <dt>面板地址</dt><dd><a data-f="url" href="#" target="_blank" rel="noopener noreferrer"></a></dd>
+      <dt>面板用户名</dt><dd><code data-f="puser"></code> <button type="button" class="copy" data-act="copy-user">复制</button></dd>
+      <dt>面板密码</dt><dd><code data-f="ppass">••••••••</code> <button type="button" class="copy" data-act="reveal" aria-pressed="false">显示</button> <button type="button" class="copy" data-act="copy-pass">复制</button></dd>
+      <dt>NodeLite 版本</dt><dd data-f="version"></dd>
+      <dt>IPv6</dt><dd data-f="ipv6"></dd>
+      <dt>SSH 主机密钥</dt><dd><code data-f="fp"></code></dd>
+      <dt>SSH 密码</dt><dd data-f="sshpw"></dd>
+    </dl>
+    <div class="actions">
+      <button type="button" class="primary" data-act="connect">连接服务器</button>
+      <button type="button" data-act="redeploy">重新部署</button>
+      <button type="button" data-act="history" aria-expanded="false">查看历史</button>
+      <button type="button" class="ghost" data-act="forget-pw">删除保存的 SSH 密码</button>
+      <button type="button" class="danger" data-act="delete">删除记录</button>
+    </div>
+    <div data-f="history" class="history" hidden></div>
+    <p class="muted small" data-f="msg" role="status" aria-live="polite"></p>
+  </article>
+</template>
 <script src="{{base}}/static/app.js"></script>
 </body>
 </html>

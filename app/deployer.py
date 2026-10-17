@@ -5,14 +5,16 @@ Security notes:
 * The SSH password is only handed to paramiko for authentication; it is never
   placed in a command line, environment variable, file or log line.
 * Every value sent to the remote shell is passed through ``shlex.quote``.
-* Host keys are accepted on first use (TOFU) and never persisted; the SHA256
-  fingerprint is returned so the operator can compare it out of band.
+* Host keys are accepted on first use (TOFU); the SHA256 fingerprint is
+  returned and saved in the server record. Later connections (re-deploy,
+  web terminal) pin it and refuse on mismatch.
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import ipaddress
 import re
 import shlex
@@ -60,6 +62,10 @@ class DeploySpec:
     ssh_user: str
     ssh_password: str | None
     disable_ipv6: bool = True
+    # Pinned SHA256 fingerprint from the saved record; empty = trust on first use.
+    expected_fingerprint: str = ""
+    # Called (in the worker thread) right after a successful SSH login.
+    on_connected: Callable[[str, str], None] | None = None
 
 
 @dataclass
@@ -90,6 +96,43 @@ class _AcceptOnce(paramiko.MissingHostKeyPolicy):
         return None
 
 
+class HostKeyMismatch(Exception):
+    """The server presented a different host key than the pinned one."""
+
+    def __init__(self, expected: str, actual: str, key_type: str):
+        super().__init__("host key mismatch")
+        self.expected, self.actual, self.key_type = expected, actual, key_type
+
+    def message(self) -> str:
+        return (
+            f"SSH 主机密钥与保存的记录不一致！记录：{self.expected}，本次：{self.key_type} {self.actual}。"
+            "可能是服务器重装了系统，也可能是中间人攻击。已拒绝连接（未发送密码）。"
+            "确认无误后请在「服务器记录」中点「信任新密钥」。"
+        )
+
+
+class PinnedKeyPolicy(paramiko.MissingHostKeyPolicy):
+    """Accept the host key only if its SHA256 fingerprint equals the pinned one.
+
+    paramiko consults the policy before user authentication, so on mismatch the
+    password is never sent.
+    """
+
+    def __init__(self, expected: str):
+        self.expected = expected
+
+    def missing_host_key(self, client, hostname, key):
+        actual = fingerprint_sha256(key)
+        if not self.expected or not hmac.compare_digest(actual, self.expected):
+            raise HostKeyMismatch(self.expected, actual, key.get_name())
+
+
+class DeployHostKeyMismatch(DeploymentError):
+    def __init__(self, mismatch: HostKeyMismatch):
+        super().__init__(mismatch.message())
+        self.mismatch = mismatch
+
+
 class SSHAdapter:
     def __init__(self, spec: DeploySpec, timeout: float):
         self.spec = spec
@@ -106,7 +149,8 @@ class SSHAdapter:
         try:
             for address in self.spec.resolved_addresses:
                 client = paramiko.SSHClient()
-                client.set_missing_host_key_policy(_AcceptOnce())
+                expected = self.spec.expected_fingerprint
+                client.set_missing_host_key_policy(PinnedKeyPolicy(expected) if expected else _AcceptOnce())
                 try:
                     client.connect(
                         hostname=address,
@@ -132,6 +176,9 @@ class SSHAdapter:
                     self.connected_address = address
                     self.client = client
                     return
+                except HostKeyMismatch as exc:
+                    client.close()
+                    raise DeployHostKeyMismatch(exc) from None
                 except paramiko.AuthenticationException as exc:
                     client.close()
                     raise DeploymentError("SSH 认证失败：用户名或密码错误，或服务器禁用了密码登录") from exc
@@ -331,7 +378,13 @@ def deploy(
         reporter.stage("connect", f"正在连接 {spec.host}:{spec.ssh_port}（用户 {spec.ssh_user}）")
         ssh.connect()
         spec.ssh_password = None
-        reporter.info(f"SSH 已连接 {ssh.connected_address}，主机密钥 {ssh.key_type} {ssh.fingerprint}")
+        pinned = "（与记录一致）" if spec.expected_fingerprint else "（首次连接，已保存到服务器记录）"
+        reporter.info(f"SSH 已连接 {ssh.connected_address}，主机密钥 {ssh.key_type} {ssh.fingerprint}{pinned}")
+        if spec.on_connected is not None:
+            try:
+                spec.on_connected(ssh.fingerprint, ssh.key_type)
+            except Exception as exc:  # noqa: BLE001 - records are best effort, never break a deploy
+                reporter.info(f"保存服务器记录失败：{type(exc).__name__}")
         status, out = ssh.run("id -u", timeout=20)
         if status != 0 or not out.strip().isdigit():
             raise DeploymentError("无法确认远程用户权限（id -u 失败）")
@@ -467,6 +520,8 @@ def deploy(
                 "public_note": public_note,
             },
         }
+    except DeployHostKeyMismatch:
+        raise
     except DeploymentError as exc:
         raise DeploymentError(scrub(str(exc))) from None
     except Exception as exc:  # noqa: BLE001

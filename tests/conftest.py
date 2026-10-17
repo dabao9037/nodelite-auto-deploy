@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import tempfile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -32,6 +33,8 @@ def make_settings(**overrides) -> Settings:
         listen_port=8780,
         allow_public_listen=False,
         nodelite_installer_url="https://raw.githubusercontent.com/dabao9037/nodelite/main/install.sh",
+        # 每个测试实例独立的数据目录，绝不碰 /var/lib
+        data_dir=tempfile.mkdtemp(prefix="nlad-test-"),
     )
     values.update(overrides)
     return Settings(**values)

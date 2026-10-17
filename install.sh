@@ -14,6 +14,7 @@ ENV_FILE="/etc/$APP.env"
 UNIT="/etc/systemd/system/$APP.service"
 BIN="/usr/local/bin/nladmin"
 SVC_USER="nlad"
+DATA_DIR="/var/lib/$APP"
 umask 022
 
 info() { printf '\033[0;36m[*]\033[0m %s\n' "$*"; }
@@ -98,9 +99,20 @@ MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-2}
 TASK_RESULT_TTL_SECONDS=${TASK_RESULT_TTL_SECONDS:-900}
 ALLOW_PRIVATE_TARGETS=${ALLOW_PRIVATE_TARGETS:-0}
 TARGET_ALLOWLIST_CIDRS=${TARGET_ALLOWLIST_CIDRS:-}
+WEB_DATA_DIR=$DATA_DIR
 EOF
   chown root:root "$ENV_FILE"; chmod 0600 "$ENV_FILE"
   NLAD_SHOW_USER="$user"; NLAD_SHOW_PASSWORD="$password"
+}
+
+ensure_data_dir() {
+  # 服务器记录 data.db 和加密密钥 secret.key：只有服务用户可读写
+  install -d -o "$SVC_USER" -g "$SVC_USER" -m 0700 "$DATA_DIR"
+  chown "$SVC_USER:$SVC_USER" "$DATA_DIR"; chmod 0700 "$DATA_DIR"
+  local file
+  for file in "$DATA_DIR/data.db" "$DATA_DIR/secret.key"; do
+    if [[ -f "$file" ]]; then chown "$SVC_USER:$SVC_USER" "$file"; chmod 0600 "$file"; fi
+  done
 }
 
 write_cli() {
@@ -116,6 +128,7 @@ activate_release() {
   chown -R root:"$SVC_USER" "$release"; chmod -R go-w "$release"; chmod 0750 "$release"
   ln -sfn "$release" "$CURRENT.new"; mv -Tf "$CURRENT.new" "$CURRENT"
   rm -rf "$VENV.old"; if [[ -d "$VENV" ]]; then mv "$VENV" "$VENV.old"; fi; mv "$VENV.new" "$VENV"
+  ensure_data_dir
   install -o root -g root -m 0644 "$release/$APP.service" "$UNIT"
   systemctl daemon-reload
   systemctl enable "$APP.service" >/dev/null 2>&1
@@ -175,7 +188,7 @@ install_app() {
   printf '\n  管理员用户名：%s\n  管理员密码：%s\n  （密码只显示这一次，请立即保存；忘记可运行 nladmin password 重置）\n' \
     "$NLAD_SHOW_USER" "$NLAD_SHOW_PASSWORD"
   print_access
-  printf '\n  管理命令：nladmin status|logs|update|restart|password|info|uninstall\n\n'
+  printf '\n  管理命令：nladmin status|logs|update|restart|password|info|records|forget-passwords|uninstall\n\n'
 }
 
 update_app() {
@@ -210,10 +223,27 @@ uninstall_app() {
     local answer; read -r -p "输入 YES 确认卸载 NodeLite Auto Deploy（不影响已部署的远程服务器）: " answer
     [[ "$answer" == YES ]] || { warn "已取消"; exit 0; }
   fi
+  local purge="${NLAD_PURGE_DATA:-}"
+  if [[ -d "$DATA_DIR" && -z "$purge" ]]; then
+    if [[ "${NLAD_ASSUME_YES:-0}" == 1 ]]; then
+      purge=0
+    else
+      local answer
+      read -r -p "是否同时删除服务器记录数据目录 $DATA_DIR（含加密保存的 SSH/面板密码，不可恢复）？输入 YES 删除，直接回车保留: " answer
+      [[ "$answer" == YES ]] && purge=1 || purge=0
+    fi
+  fi
   systemctl disable --now "$APP.service" 2>/dev/null || true
   rm -f "$UNIT" "$BIN" "$ENV_FILE"
   systemctl daemon-reload 2>/dev/null || true
   rm -rf --one-file-system "$ROOT"
+  if [[ "$purge" == 1 ]]; then
+    rm -rf --one-file-system "$DATA_DIR"
+    ok "已删除数据目录 $DATA_DIR"
+  elif [[ -d "$DATA_DIR" ]]; then
+    chown -R root:root "$DATA_DIR"
+    warn "已保留数据目录 $DATA_DIR（属主改为 root）。其中保存了加密的服务器密码，不需要时请手动删除"
+  fi
   userdel "$SVC_USER" 2>/dev/null || true
   ok "已卸载"
 }

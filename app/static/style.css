@@ -4,6 +4,7 @@
   --focus: #ffbf47; color-scheme: light;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; font: 16px/1.6 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
 h1 { font-size: 1.25rem; margin: 0; }
 h2 { font-size: 1.1rem; margin: 0 0 .75rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
@@ -63,6 +64,32 @@ code { background: #f1f3f8; padding: .1rem .35rem; border-radius: .3rem; font-si
 .login-card { width: 100%; max-width: 400px; }
 .login-card form { display: grid; gap: .5rem; margin: .5rem 0 1rem; }
 .login-card .primary { margin-top: .5rem; }
+
+/* tabs, server records, terminal */
+.stack { display: grid; gap: 1rem; }
+.tabs { display: flex; gap: .5rem; border-bottom: 1px solid var(--line); }
+.tabs [role="tab"] { border: 1px solid transparent; border-bottom: none; border-radius: .5rem .5rem 0 0; background: transparent; font-weight: 600; color: var(--muted); }
+.tabs [role="tab"][aria-selected="true"] { background: var(--card); border-color: var(--line); color: var(--text); margin-bottom: -1px; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+button.danger { background: #fff; border-color: var(--bad); color: var(--bad); }
+button.danger:hover { background: #fde8e7; }
+a.button { display: inline-block; text-decoration: none; border-radius: .5rem; padding: .55rem 1rem; border: 1px solid var(--line); background: #fff; color: var(--text); word-break: normal; }
+.notice.bad { background: #fde8e7; border-color: var(--bad); color: #7a1610; }
+.servers { display: grid; gap: 1rem; }
+.server { padding: 1rem; }
+.server-head h3 { margin: 0; font-size: 1.05rem; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.server .kv { margin: .75rem 0; }
+.pill.queued { background: #e7ebf3; }
+.history { margin-top: .75rem; overflow-x: auto; }
+.history table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+.history caption { text-align: left; font-weight: 600; margin-bottom: .25rem; }
+.history th, .history td { border-bottom: 1px solid var(--line); padding: .35rem .5rem; text-align: left; vertical-align: top; }
+.term-body { display: flex; flex-direction: column; height: 100vh; background: #0f172a; }
+.term-bar h1 code { font-size: .95rem; }
+.term-main { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: .5rem; gap: .5rem; }
+.term-card { max-width: 640px; width: 100%; margin: 0 auto; }
+.term-card form { display: grid; gap: .5rem; }
+.terminal { flex: 1; min-height: 0; background: #0f172a; }
 @media (max-width: 640px) {
   .grid { grid-template-columns: 1fr; }
   .steps { grid-template-columns: 1fr; }

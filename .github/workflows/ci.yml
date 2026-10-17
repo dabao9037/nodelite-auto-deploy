@@ -31,10 +31,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check app/static/app.js
+      - run: node --check app/static/app.js && node --check app/static/terminal.js
       - name: Security gates
         run: |
-          ! grep -RniE 'localStorage|sessionStorage' app/static
+          ! grep -RniE 'localStorage|sessionStorage' app/static --exclude-dir=vendor
+          ! grep -RniE 'localStorage|sessionStorage' app/static/vendor/xterm/*.js
           ! grep -RnE 'sshpass' install.sh app
           grep -q 'User=nlad' nodelite-auto-deploy.service
+          grep -q 'StateDirectory=nodelite-auto-deploy' nodelite-auto-deploy.service
+          ! grep -RnE 'https?://(cdn|unpkg|cdnjs)' app/static/*.html
           grep -q 'WEB_LISTEN_HOST:-127.0.0.1' install.sh

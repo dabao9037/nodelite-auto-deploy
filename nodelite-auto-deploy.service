@@ -13,6 +13,10 @@ ExecStart=/opt/nodelite-auto-deploy/venv/bin/python -m app.main
 Restart=on-failure
 RestartSec=3
 UMask=0077
+# 服务器记录（data.db）和加密密钥（secret.key）。ProtectSystem=strict 下只有这里可写
+StateDirectory=nodelite-auto-deploy
+StateDirectoryMode=0700
+Environment=WEB_DATA_DIR=/var/lib/nodelite-auto-deploy
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true

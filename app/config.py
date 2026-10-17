@@ -70,6 +70,10 @@ class Settings:
     base_path: str = ""
     # 只在 127.0.0.1 后面有可信反代（nginx）时开启：用 X-Real-IP 作为客户端地址做登录限速
     trust_proxy: bool = False
+    # 服务器记录（SQLite）和加密密钥所在目录
+    data_dir: str = "/var/lib/nodelite-auto-deploy"
+    max_terminals: int = 4
+    terminal_idle_seconds: int = 1800
 
     @classmethod
     def load(cls) -> "Settings":
@@ -120,6 +124,9 @@ class Settings:
             ).strip(),
             base_path=normalize_base_path(os.getenv("WEB_BASE_PATH", "")),
             trust_proxy=_flag("WEB_TRUST_PROXY", False),
+            data_dir=os.getenv("WEB_DATA_DIR", "").strip() or "/var/lib/nodelite-auto-deploy",
+            max_terminals=_int("MAX_TERMINALS", 4, 1, 32),
+            terminal_idle_seconds=_int("TERMINAL_IDLE_SECONDS", 1800, 60, 86400),
         )
         if not is_loopback_host(settings.listen_host) and not settings.allow_public_listen:
             raise RuntimeError(
