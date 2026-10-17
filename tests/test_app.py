@@ -371,3 +371,9 @@ def test_login_form_with_origin_null_works():
     resp = client.post("/login", data={"username": ADMIN, "password": ADMIN_PW, "csrf": token},
                        headers={"origin": "null", "sec-fetch-site": "same-origin"}, follow_redirects=False)
     assert resp.status_code == 303 and resp.headers["location"] == "/"
+
+
+def test_healthz_available_at_root_and_base_path():
+    client, _ = client_for(base_path="/p4th")
+    assert client.get("/healthz").json() == {"status": "ok"}
+    assert client.get("/p4th/healthz").json() == {"status": "ok"}

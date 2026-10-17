@@ -197,9 +197,13 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy) -> FastAPI:
                 messages.append(f"{field} 字段无效")
         return JSONResponse({"detail": "；".join(messages) or "请求无效"}, status_code=422)
 
-    @app.get(bp + "/healthz")
     async def healthz():
         return {"status": "ok"}
+
+    # 根路径和子路径都提供健康检查：安装/更新脚本直连 127.0.0.1 探活，不受 WEB_BASE_PATH 影响
+    app.add_api_route("/healthz", healthz, methods=["GET"])
+    if bp:
+        app.add_api_route(bp + "/healthz", healthz, methods=["GET"])
 
     @app.get(bp + "/login", response_class=HTMLResponse)
     async def login_page(request: Request, error: str = ""):
