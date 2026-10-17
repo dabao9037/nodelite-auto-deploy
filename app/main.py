@@ -145,10 +145,16 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy) -> FastAPI:
         return peer
 
     def same_origin(request: Request) -> bool:
+        # 浏览器在 Referrer-Policy: no-referrer 下，同源表单 / fetch 的 POST 也会带
+        # "Origin: null"，之前因此把正常操作当成跨站拒绝。null 时改看 Sec-Fetch-Site。
         origin = request.headers.get("origin")
-        if not origin or origin == "null":
-            return origin is None
-        return urlsplit(origin).netloc.lower() == request.headers.get("host", "").lower()
+        fetch_site = request.headers.get("sec-fetch-site", "").lower()
+        if origin and origin != "null":
+            return urlsplit(origin).netloc.lower() == request.headers.get("host", "").lower()
+        if fetch_site:
+            return fetch_site in {"same-origin", "none"}
+        # 无 Origin 也无 Sec-Fetch-Site：非浏览器客户端，交给 CSRF token 校验
+        return origin is None
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -161,7 +167,7 @@ def create_app(settings: Settings | None = None, deploy_fn=deploy) -> FastAPI:
                 "Pragma": "no-cache",
                 "X-Content-Type-Options": "nosniff",
                 "X-Frame-Options": "DENY",
-                "Referrer-Policy": "no-referrer",
+                "Referrer-Policy": "same-origin",
                 "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
                 "Content-Security-Policy": (
                     "default-src 'self'; img-src 'self' data:; style-src 'self'; "

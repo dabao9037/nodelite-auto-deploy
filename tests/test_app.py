@@ -345,3 +345,29 @@ def test_trust_proxy_uses_real_ip_for_login_limit():
     assert attempt("1.1.1.1").endswith("error=1")
     assert attempt("1.1.1.1").endswith("error=2")
     assert attempt("2.2.2.2").endswith("error=1")
+
+
+def test_origin_null_same_origin_browser_post_allowed():
+    client, _ = client_for()
+    login(client)
+    token = csrf_of(client)
+    ok = client.post("/api/tasks", json=payload(),
+                     headers={"x-csrf-token": token, "origin": "null", "sec-fetch-site": "same-origin"})
+    assert ok.status_code == 202
+    bad = client.post("/api/tasks", json=payload(),
+                      headers={"x-csrf-token": token, "origin": "null", "sec-fetch-site": "cross-site"})
+    assert bad.status_code == 403
+    assert client.post("/api/tasks", json=payload(),
+                       headers={"x-csrf-token": token, "origin": "null"}).status_code == 403
+    assert client.get("/login").headers["referrer-policy"] == "same-origin"
+
+
+def test_login_form_with_origin_null_works():
+    import re as _re
+
+    client, _ = client_for()
+    page = client.get("/login")
+    token = _re.search(r'name="csrf" value="([^"]+)"', page.text).group(1)
+    resp = client.post("/login", data={"username": ADMIN, "password": ADMIN_PW, "csrf": token},
+                       headers={"origin": "null", "sec-fetch-site": "same-origin"}, follow_redirects=False)
+    assert resp.status_code == 303 and resp.headers["location"] == "/"
