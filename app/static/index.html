@@ -105,6 +105,10 @@
     <section class="card" aria-labelledby="servers-title">
       <h2 id="servers-title">服务器记录</h2>
       <p class="muted small">部署成功的服务器会自动出现在这里。面板密码和 SSH 密码均加密保存，列表中不返回密码。</p>
+      <div class="server-search" role="search">
+        <label for="server-search">搜索 IP</label>
+        <input type="search" id="server-search" placeholder="输入 IP 或其中一段，如 192.168 或 :2222" autocomplete="off" spellcheck="false" inputmode="text">
+      </div>
       <p id="servers-status" class="status" role="status" aria-live="polite"></p>
       <div id="servers" class="servers"></div>
     </section>

@@ -208,11 +208,20 @@
     statusMessage.textContent = '结果已从本页和内存清除（服务器记录不受影响）';
   });
   document.getElementById('goto-servers').addEventListener('click', () => selectTab(tabs[1], true));
+  document.getElementById('server-search').addEventListener('input', () => renderServers());
 
   // ---- 服务器记录 ---------------------------------------------------------------
   const list = document.getElementById('servers');
   const listStatus = document.getElementById('servers-status');
   const template = document.getElementById('server-card');
+  const searchInput = document.getElementById('server-search');
+
+  // 按 IP 过滤：忽略大小写和首尾空格，匹配主机名/IP 或 "IP:端口" 中的任意片段
+  function matchesSearch(r, query) {
+    if (!query) return true;
+    const host = String(r.host || '').toLowerCase();
+    return host.includes(query) || hostPort(r).toLowerCase().includes(query);
+  }
 
   async function loadServers() {
     try {
@@ -228,8 +237,13 @@
     const count = document.getElementById('server-count');
     count.textContent = servers.length ? String(servers.length) : '';
     list.replaceChildren();
-    listStatus.textContent = servers.length ? '' : '还没有服务器记录。部署成功后会自动保存到这里。';
-    servers.forEach((r) => {
+    const query = searchInput.value.trim().toLowerCase();
+    const shown = servers.filter((r) => matchesSearch(r, query));
+    if (!servers.length) listStatus.textContent = '还没有服务器记录。部署成功后会自动保存到这里。';
+    else if (!query) listStatus.textContent = '';
+    else if (!shown.length) listStatus.textContent = `没有找到 IP 包含「${searchInput.value.trim()}」的服务器。`;
+    else listStatus.textContent = `找到 ${shown.length} / ${servers.length} 台服务器。`;
+    shown.forEach((r) => {
       const card = template.content.firstElementChild.cloneNode(true);
       const f = (name) => card.querySelector(`[data-f="${name}"]`);
       card.dataset.id = r.id;

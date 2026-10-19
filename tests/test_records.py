@@ -623,3 +623,14 @@ def test_ws_ticket_never_in_url_and_auth_message_required(tmp_path):
             ws.send_text(json.dumps({"t": "i", "d": "ls\r"}))
             ws.receive_text()
     assert info.value.code == 1008 and FakeShell.instances == []
+
+
+def test_server_list_has_ip_search(tmp_path):
+    from pathlib import Path
+
+    client = make_client(tmp_path)
+    login(client)
+    page = client.get("/")
+    assert 'id="server-search"' in page.text and 'type="search"' in page.text and 'for="server-search"' in page.text
+    js = Path("app/static/app.js").read_text(encoding="utf-8")
+    assert "function matchesSearch" in js and "server-search" in js and "shown.forEach" in js

@@ -23,7 +23,7 @@ a { color: var(--primary-dark); word-break: break-all; }
 .field { display: flex; flex-direction: column; gap: .25rem; }
 .wide { grid-column: 1 / -1; }
 label { font-weight: 600; }
-input[type="text"], input:not([type]), input[type="number"], input[type="password"] {
+input[type="text"], input:not([type]), input[type="number"], input[type="password"], input[type="search"] {
   font: inherit; padding: .6rem .7rem; border: 1px solid #9aa3b5; border-radius: .5rem; width: 100%; background: #fff; color: var(--text);
 }
 input[type="checkbox"] { width: 1.15rem; height: 1.15rem; margin: 0; accent-color: var(--primary); }
@@ -76,6 +76,7 @@ button.danger:hover { background: #fde8e7; }
 a.button { display: inline-block; text-decoration: none; border-radius: .5rem; padding: .55rem 1rem; border: 1px solid var(--line); background: #fff; color: var(--text); word-break: normal; }
 .notice.bad { background: #fde8e7; border-color: var(--bad); color: #7a1610; }
 .servers { display: grid; gap: 1rem; }
+.server-search { display: flex; flex-direction: column; gap: .25rem; margin: .75rem 0 .25rem; }
 .server { padding: 1rem; }
 .server-head h3 { margin: 0; font-size: 1.05rem; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 .server .kv { margin: .75rem 0; }
