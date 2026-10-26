@@ -251,7 +251,7 @@
       f('title').textContent = `${r.ssh_user}@${hostPort(r)}`;
       const status = f('status');
       status.textContent = recordStatus[r.last_status] || r.last_status;
-      status.classList.add(r.last_status === 'failed' ? 'failed' : r.last_status ? 'success' : 'queued');
+      status.classList.add(r.last_status === 'failed' ? 'failed' : r.last_status === 'warn' ? 'warn' : r.last_status ? 'success' : 'queued');
       f('when').textContent = `首次部署 ${fmtTime(r.first_deploy_at)} · 最近部署 ${fmtTime(r.last_deploy_at)}`;
       const url = f('url');
       if (r.panel_url) { url.href = r.panel_url; url.textContent = r.panel_url; } else { url.replaceWith(document.createTextNode('—')); }
