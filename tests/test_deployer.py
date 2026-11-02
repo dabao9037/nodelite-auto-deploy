@@ -144,6 +144,7 @@ def test_happy_path_returns_panel_info_and_drops_password():
         "https://raw.githubusercontent.com/dabao9037/nodelite/main/install.sh", "203.0.113.10",
     ]
     assert 'bash "$work/install.sh" install </dev/null' in argv[2]
+    assert 'bash "$work/install.sh" shortcuts' in argv[2]
 
 
 def test_existing_install_runs_update_without_overriding_host():

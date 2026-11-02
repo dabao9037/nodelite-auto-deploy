@@ -291,6 +291,8 @@ bash -n "$work/install.sh"
 echo "[*] 安装脚本 SHA256：$(sha256sum "$work/install.sh" | awk '{print $1}')"
 if [ -n "$public_host" ]; then export PUBLIC_HOST="$public_host"; fi
 bash "$work/install.sh" install </dev/null
+# `install` is non-interactive and must still leave a management shortcut.
+bash "$work/install.sh" shortcuts
 """
 
 
