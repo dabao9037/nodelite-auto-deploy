@@ -310,6 +310,22 @@ def format_host(host: str) -> str:
     return f"[{host}]" if is_ipv6_literal(host) else host
 
 
+def is_ip_literal(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host.strip().strip("[]").split("%", 1)[0])
+        return True
+    except ValueError:
+        return False
+
+
+def same_host(left: str, right: str) -> bool:
+    """Compare IPs structurally and domains case-insensitively."""
+    try:
+        return ipaddress.ip_address(left.strip().strip("[]")) == ipaddress.ip_address(right.strip().strip("[]"))
+    except ValueError:
+        return left.strip().rstrip(".").lower() == right.strip().rstrip(".").lower()
+
+
 def validate_info(info: dict[str, str]) -> None:
     for key in INFO_KEYS:
         if not info.get(key):
@@ -433,7 +449,31 @@ def deploy(
         mode = "update" if installed else "install"
         reporter.stage("install", "正在更新 NodeLite" if installed else "正在安装 NodeLite")
         # Fresh install: tell NodeLite the address the operator actually used.
+        # On update, the installer keeps PUBLIC_HOST unless we pass a new one.
+        # If the saved value is an IP literal and the operator now reaches the
+        # server at a different address, pass that address so generated node
+        # links and the panel URL stop advertising the old IP. A custom domain
+        # saved earlier is left alone.
         public_host = "" if installed else spec.host
+        if installed:
+            current_public_host = ""
+            status, env_out = session.run(
+                ["sh", "-c", f"sed -n 's/^PUBLIC_HOST=//p' {shlex.quote(ENV_PATH)} | tail -n1"],
+                timeout=20,
+            )
+            if status == 0:
+                current_public_host = parse_kv(env_out).get("PUBLIC_HOST", "").strip()
+                if not current_public_host:
+                    rows = [line.strip() for line in env_out.splitlines() if line.strip()]
+                    current_public_host = rows[-1] if rows else ""
+            if not current_public_host or (
+                is_ip_literal(current_public_host) and not same_host(current_public_host, spec.host)
+            ):
+                public_host = spec.host
+                reporter.info(
+                    f"检测到面板公网地址需要从 {current_public_host or '（空）'} 更新为 {spec.host}；"
+                    "本次更新会同步节点链接和面板地址"
+                )
         status, out = session.run(
             ["bash", "-c", INSTALL_SCRIPT, "nodelite-auto", settings.nodelite_installer_url, public_host],
             timeout=settings.install_timeout,

@@ -290,6 +290,14 @@ def test_static_assets_have_no_browser_storage():
     assert "localStorage" not in js and "sessionStorage" not in js
 
 
+def test_server_card_prefers_url_matching_record_host():
+    from pathlib import Path
+
+    js = Path("app/static/app.js").read_text(encoding="utf-8")
+    assert "const urlHost = (value) =>" in js
+    assert "urlHost(item) === r.host.toLowerCase()" in js
+
+
 def test_base_path_serves_everything_under_prefix():
     import re as _re
 

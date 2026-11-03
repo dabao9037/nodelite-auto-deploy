@@ -34,6 +34,9 @@
   };
   const fmtTime = (ts) => (ts ? new Date(ts * 1000).toLocaleString('zh-CN', { hour12: false }) : '—');
   const hostPort = (r) => `${r.host.includes(':') ? `[${r.host}]` : r.host}:${r.ssh_port}`;
+  const urlHost = (value) => {
+    try { return new URL(value).hostname.replace(/^\[|\]$/g, '').toLowerCase(); } catch (e) { return ''; }
+  };
 
   // ---- 标签页 -----------------------------------------------------------------
   const tabs = [document.getElementById('tab-deploy'), document.getElementById('tab-servers')];
@@ -254,7 +257,11 @@
       status.classList.add(r.last_status === 'failed' ? 'failed' : r.last_status === 'warn' ? 'warn' : r.last_status ? 'success' : 'queued');
       f('when').textContent = `首次部署 ${fmtTime(r.first_deploy_at)} · 最近部署 ${fmtTime(r.last_deploy_at)}`;
       const url = f('url');
-      if (r.panel_url) { url.href = r.panel_url; url.textContent = r.panel_url; } else { url.replaceWith(document.createTextNode('—')); }
+      // 服务器换 IP 后，旧记录里的 panel_url 可能仍指向旧地址；优先显示与记录
+      // 地址一致的那一条，避免卡片继续展示已经失效的旧 IP。
+      const candidates = [r.panel_url, r.alt_panel_url].filter(Boolean);
+      const shownUrl = candidates.find((item) => urlHost(item) === r.host.toLowerCase()) || r.panel_url || r.alt_panel_url;
+      if (shownUrl) { url.href = shownUrl; url.textContent = shownUrl; } else { url.replaceWith(document.createTextNode('—')); }
       f('puser').textContent = r.panel_user || '—';
       f('version').textContent = r.version || '—';
       f('ipv6').textContent = r.ipv6_status || '—';

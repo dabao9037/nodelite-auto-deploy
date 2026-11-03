@@ -156,6 +156,31 @@ def test_existing_install_runs_update_without_overriding_host():
     assert any("保留现有账号密码" in line for line in rec.lines)
 
 
+def test_existing_install_updates_stale_ip_public_host():
+    preflight = PREFLIGHT_OK.replace("INSTALLED=0", "INSTALLED=1").replace("OLD_VERSION=", "OLD_VERSION=v0.3.30-native")
+    new_host = "198.51.100.50"
+    result, rec, ssh, _ = run_deploy(
+        spec(host=new_host, resolved_addresses=(new_host,)),
+        preflight=preflight,
+    )
+    assert result["mode"] == "update"
+    install_cmd = next(c for c in ssh.commands if "nodelite-auto" in c)
+    assert shlex.split(install_cmd)[-1] == new_host
+    assert any(f"更新为 {new_host}" in line for line in rec.lines)
+
+
+def test_existing_install_keeps_custom_domain_public_host():
+    preflight = PREFLIGHT_OK.replace("INSTALLED=0", "INSTALLED=1").replace("OLD_VERSION=", "OLD_VERSION=v0.3.30-native")
+    info = INFO_OK.replace("PUBLIC_HOST=203.0.113.10", "PUBLIC_HOST=vps.example.com")
+    _, _, ssh, _ = run_deploy(
+        spec(host="198.51.100.50", resolved_addresses=("198.51.100.50",)),
+        preflight=preflight,
+        info=info,
+    )
+    install_cmd = next(c for c in ssh.commands if "nodelite-auto" in c)
+    assert shlex.split(install_cmd)[-1] == ""
+
+
 def test_non_root_without_sudo_fails_clearly():
     with pytest.raises(DeploymentError, match="免密 sudo"):
         run_deploy(spec(ssh_user="ubuntu"), uid="1000", sudo_ok=False)
