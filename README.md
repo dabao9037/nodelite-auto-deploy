@@ -104,6 +104,15 @@ location /你的根路径/ {
 }
 ```
 
+### 远程服务器上的 DNS 加固（默认开启）
+
+部署时会在目标机上屏蔽 SVCB(64) / HTTPS(65) DNS 记录。这两类 RR 的应答带 `ipv4hint` / `ipv6hint`（真实地址）与 `ech`（加密 SNI 配置），在 Fake-IP 代理下会让客户端绕过假 IP 直连、并把流量推进 QUIC(UDP/443)，出口 IP 与 DNS 一起漏。过滤后客户端按 RFC 9460/9461 回退 A/AAAA + h2，业务功能不受影响。
+
+- 依赖目标机 dnsmasq >= 2.86（`filter-rr`）；版本不够自动跳过，不影响部署结果。
+- 会备份并改写目标机 `/etc/resolv.conf`，同时让出 53 端口；失败自动回滚。
+- 部署日志末尾会执行 `dns-status`，把实际状态打出来。
+- 关掉：部署前设 `SVCB_BLOCK=0`；或部署后在目标机执行 `bash /opt/nodelite/install.sh dns-unblock`。
+
 ### 远程服务器上实际执行了什么
 
 | 步骤 | 命令（全部无 TTY、参数经 `shlex.quote`） |

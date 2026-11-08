@@ -311,9 +311,14 @@ grep -q 'dabao9037/nodelite' "$work/install.sh" || { echo "[x] 安装脚本来�
 bash -n "$work/install.sh"
 echo "[*] 安装脚本 SHA256：$(sha256sum "$work/install.sh" | awk '{print $1}')"
 if [ -n "$public_host" ]; then export PUBLIC_HOST="$public_host"; fi
+# 默认屏蔽 SVCB(64)/HTTPS(65) 记录：这两类 RR 会带 ipv4hint/真实 IP 与 ECH，
+# 在 Fake-IP 代理下让客户端绕过假 IP 直连、QUIC 走 UDP/443 出网。传 SVCB_BLOCK=0 可关闭。
+export SVCB_BLOCK="${SVCB_BLOCK:-1}"
 bash "$work/install.sh" install </dev/null
 # `install` is non-interactive and must still leave a management shortcut.
 bash "$work/install.sh" shortcuts
+# 把 DNS 过滤的实际状态打进部署日志，失败不影响部署结果
+bash "$work/install.sh" dns-status </dev/null || true
 """
 
 
