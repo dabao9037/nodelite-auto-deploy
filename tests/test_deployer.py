@@ -123,6 +123,13 @@ def run_deploy(s=None, probe=lambda url, st: (None, "skip"), **fake):
     return result, rec, holder["ssh"], s
 
 
+def test_install_script_has_github_api_fallback():
+    script = deployer.INSTALL_SCRIPT
+    assert "download_installer" in script
+    assert "Accept: application/vnd.github.raw" in script
+    assert "api.github.com/repos/$owner/$repo/contents/$path?ref=$ref" in script
+
+
 def test_happy_path_returns_panel_info_and_drops_password():
     result, rec, ssh, s = run_deploy()
     assert result["panel_url"] == "http://203.0.113.10:45678/panel-0123456789abcdef/login"
