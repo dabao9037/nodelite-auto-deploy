@@ -284,6 +284,25 @@ url="$1"; public_host="$2"
 work="$(mktemp -d /tmp/nodelite-auto.XXXXXX)"
 trap 'rm -rf "$work"' EXIT
 
+ensure_curl() {
+  command -v curl >/dev/null 2>&1 && return 0
+  echo "[!] 目标系统缺少 curl，正在自动安装"
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq >/dev/null 2>&1 || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl ca-certificates >/dev/null 2>&1 || true
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y -q curl ca-certificates >/dev/null 2>&1 || true
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y -q curl ca-certificates >/dev/null 2>&1 || true
+  fi
+  command -v curl >/dev/null 2>&1 || {
+    echo "[x] 无法自动安装 curl；请先在目标机安装 curl 后重试" >&2
+    return 1
+  }
+}
+
+ensure_curl || exit 91
+
 download_installer() {
   local source="$1" destination="$2" rest owner repo ref path fallback
   if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 "$source" -o "$destination"; then
@@ -459,7 +478,9 @@ def deploy(
         if facts.get("BASH") != "1":
             raise DeploymentError("目标系统缺少 bash")
         if facts.get("CURL") != "1":
-            raise DeploymentError("目标系统缺少 curl，请先安装 curl（例如 apt install -y curl）")
+            # The installer bootstrap can install curl itself. Do not abort here:
+            # minimal Debian/Ubuntu images commonly ship without it.
+            reporter.info("目标系统缺少 curl，安装阶段会自动安装")
         installed = facts.get("INSTALLED") == "1"
         ssh_conn = facts.get("SSH_CONN", "").split()
         server_side_ipv6 = len(ssh_conn) >= 3 and is_ipv6_literal(ssh_conn[2])

@@ -129,6 +129,19 @@ def test_install_script_has_github_api_fallback():
     assert "Accept: application/vnd.github.raw" in script
     assert "api.github.com/repos/$owner/$repo/contents/$path?ref=$ref" in script
 
+def test_missing_curl_is_bootstrapped_before_download():
+    script = deployer.INSTALL_SCRIPT
+    assert "ensure_curl" in script
+    assert script.index("ensure_curl") < script.index("download_installer")
+    assert "apt-get install" in script
+    assert "dnf install" in script
+
+
+def test_missing_curl_preflight_continues():
+    result, rec, _, _ = run_deploy(preflight=PREFLIGHT_OK.replace("CURL=1", "CURL=0"))
+    assert result["mode"] == "install"
+    assert any("缺少 curl" in line for line in rec.lines)
+
 
 def test_happy_path_returns_panel_info_and_drops_password():
     result, rec, ssh, s = run_deploy()
@@ -204,7 +217,6 @@ def test_non_root_with_sudo_prefixes_commands():
     "replace,match",
     [
         (("SYSTEMD=1", "SYSTEMD=0"), "systemd"),
-        (("CURL=1", "CURL=0"), "curl"),
         (("ARCH=x86_64", "ARCH=mips"), "架构"),
         (("KERNEL=Linux", "KERNEL=FreeBSD"), "Linux"),
     ],
