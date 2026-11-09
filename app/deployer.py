@@ -305,22 +305,26 @@ ensure_curl || exit 91
 
 download_installer() {
   local source="$1" destination="$2" rest owner repo ref path fallback
-  if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 "$source" -o "$destination"; then
-    return 0
-  fi
   case "$source" in
     https://raw.githubusercontent.com/*)
       rest="${source#https://raw.githubusercontent.com/}"
       owner="${rest%%/*}"; rest="${rest#*/}"
       repo="${rest%%/*}"; rest="${rest#*/}"
       ref="${rest%%/*}"; path="${rest#*/}"
+      # raw.githubusercontent.com is served by Fastly with a 5-minute cache.
+      # A just-pushed installer can therefore be stale even with a query string.
+      # Prefer the API contents endpoint; fall back to raw only if the API fails.
       fallback="https://api.github.com/repos/$owner/$repo/contents/$path?ref=$ref"
-      echo "[!] GitHub raw 下载失败，尝试 GitHub API contents：$fallback"
-      curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 \
-        -H 'Accept: application/vnd.github.raw' "$fallback" -o "$destination"
+      if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 \
+        -H 'Accept: application/vnd.github.raw' \
+        -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+        "$fallback" -o "$destination"; then
+        return 0
+      fi
+      echo "[!] GitHub API contents 下载失败，回退 raw：$source"
       ;;
-    *) return 1 ;;
   esac
+  curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 "$source" -o "$destination"
 }
 
 echo "[*] 下载 NodeLite 安装脚本：$url"
