@@ -303,6 +303,13 @@ ensure_curl() {
 
 ensure_curl || exit 91
 
+# --retry-all-errors 只有 curl 7.71+ 认识；CentOS 7（7.29）、Debian 10（7.64）
+# 会直接报 option unknown，连安装脚本都下不下来（exit 90）。探测后再决定用不用。
+retry_all=""
+if curl --retry-all-errors --version >/dev/null 2>&1; then
+  retry_all="--retry-all-errors"
+fi
+
 download_installer() {
   local source="$1" destination="$2" rest owner repo ref path fallback
   case "$source" in
@@ -315,7 +322,7 @@ download_installer() {
       # A just-pushed installer can therefore be stale even with a query string.
       # Prefer the API contents endpoint; fall back to raw only if the API fails.
       fallback="https://api.github.com/repos/$owner/$repo/contents/$path?ref=$ref"
-      if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 \
+      if curl -fsSL --retry 3 $retry_all --connect-timeout 15 --max-time 120 \
         -H 'Accept: application/vnd.github.raw' \
         -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
         "$fallback" -o "$destination"; then
@@ -324,7 +331,7 @@ download_installer() {
       echo "[!] GitHub API contents 下载失败，回退 raw：$source"
       ;;
   esac
-  curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 "$source" -o "$destination"
+  curl -fsSL --retry 3 $retry_all --connect-timeout 15 --max-time 120 "$source" -o "$destination"
 }
 
 echo "[*] 下载 NodeLite 安装脚本：$url"

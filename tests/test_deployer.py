@@ -389,3 +389,13 @@ def test_ssh_adapter_auth_failure_message(monkeypatch):
         SSHAdapter(s, 5).connect()
     assert s.ssh_password is None
     FakeClient.fail_auth = False
+
+
+def test_old_curl_never_gets_retry_all_errors():
+    """curl < 7.71（CentOS 7 / Debian 10）遇到这个参数直接退出，连脚本都下不下来。"""
+    script = deployer.INSTALL_SCRIPT
+    assert "curl --retry-all-errors --version" in script
+    assert 'retry_all="--retry-all-errors"' in script
+    for line in script.splitlines():
+        if "--retry 3" in line and "curl" in line:
+            assert "$retry_all" in line, line
