@@ -594,6 +594,23 @@ def test_hidden_attribute_wins_over_layout_css():
     assert "[hidden] { display: none !important; }" in Path("app/static/style.css").read_text(encoding="utf-8")
 
 
+def test_terminal_page_presets_ip_check_and_tq_commands():
+    from pathlib import Path
+
+    page = Path("app/static/terminal.html").read_text(encoding="utf-8")
+    js = Path("app/static/terminal.js").read_text(encoding="utf-8")
+    # 两个预设命令按钮，和 att-tunnel-hub 面板同款：未连接时不可点
+    assert 'id="quick-ip" class="ghost quick" disabled' in page
+    assert 'id="quick-tq" class="ghost quick" disabled' in page
+    assert "IP 检测" in page and "TQ" in page
+    # 命令原样写进终端，末尾带回车（等价手打一条命令按回车）
+    assert "'quick-ip': 'bash <(curl -sL IP.Check.Place)'" in js
+    assert "'quick-tq': 'bash <(curl -fsSL https://raw.githubusercontent.com/ibsgss/TcpQuality/main/runTcpQuality.sh)'" in js
+    assert "send({ t: 'i', d: `${command}\\r` })" in js
+    # 只有收到 ready（live）才开启按钮，断线/重连时收回
+    assert "setQuickEnabled(kind === 'ok')" in js and "if (!live || !ws" in js
+
+
 def test_csp_host_header_injection_ignored(tmp_path):
     client = make_client(tmp_path)
     csp = client.get("/login", headers={"host": "evil; script-src *"}).headers["content-security-policy"]

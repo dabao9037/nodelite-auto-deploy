@@ -20,6 +20,13 @@
     setAttribute.call(this, name, value);
   };
 
+  // 预设命令：与 att-tunnel-hub 面板同款（IP 质量体检 / TCP 质量体检）。
+  // 只在 SSH 会话就绪后可用；点击等于在终端里手打这条命令再回车。
+  const QUICK_COMMANDS = {
+    'quick-ip': 'bash <(curl -sL IP.Check.Place)',
+    'quick-tq': 'bash <(curl -fsSL https://raw.githubusercontent.com/ibsgss/TcpQuality/main/runTcpQuality.sh)',
+  };
+
   const status = document.getElementById('term-status');
   const pwBox = document.getElementById('pw-box');
   const pwForm = document.getElementById('pw-form');
@@ -76,8 +83,36 @@
     const labels = { ok: '已连接', retry: '重连中', off: '已断开', wait: '连接中' };
     stateBadge.textContent = labels[kind] || '';
     stateBadge.className = `term-state ${kind}`;
+    setQuickEnabled(kind === 'ok');
   }
   const send = (obj) => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); };
+
+  // ---- 预设命令按钮 ----------------------------------------------------------------
+  function setQuickEnabled(on) {
+    Object.keys(QUICK_COMMANDS).forEach((id) => {
+      const button = document.getElementById(id);
+      if (button) button.disabled = !on;
+    });
+  }
+
+  function runQuick(id) {
+    const command = QUICK_COMMANDS[id];
+    const button = document.getElementById(id);
+    if (!command || !button) return;
+    if (!live || !ws || ws.readyState !== WebSocket.OPEN) return; // 还没连上就不发，免得命令丢进空气
+    send({ t: 'i', d: `${command}\r` });
+    term.focus();
+    // 防手抖双击：命令本身是幂等的（重跑一遍体检），短暂禁用只为不让一次点击变两条命令
+    button.disabled = true;
+    setTimeout(() => {
+      if (live && ws && ws.readyState === WebSocket.OPEN) button.disabled = false;
+    }, 800);
+  }
+
+  Object.keys(QUICK_COMMANDS).forEach((id) => {
+    const button = document.getElementById(id);
+    if (button) button.addEventListener('click', () => runQuick(id));
+  });
 
   term.onData((data) => send({ t: 'i', d: data }));
   term.onResize((size) => send({ t: 'r', c: size.cols, r: size.rows }));

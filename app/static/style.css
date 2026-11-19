@@ -274,6 +274,11 @@ code {
 .term-bar h1 { font-size: 17px; }
 .term-bar h1 code { background: #1e293b; border-color: #334155; color: #e2e8f0; }
 .term-bar .ghost { background: transparent; color: #e5e9f2; border-color: #334155; }
+/* 深色顶栏不能用浅色 hover 底：白底 + 浅字 = 按钮文字消失（预设命令按钮尤其容易撞上） */
+.term-bar button.ghost:hover, .term-bar a.button.ghost:hover { background: #1e293b; border-color: #475569; color: #f8fafc; }
+.term-bar button:disabled, .term-bar button:disabled:hover { background: transparent; border-color: #334155; color: #94a3b8; opacity: .6; }
+.term-bar .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; }
+.term-bar .quick { padding: 7px 12px; font-size: 13px; }
 .term-main { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 10px; gap: 10px; }
 .term-card { max-width: 640px; width: 100%; margin: 0 auto; }
 .term-card form { display: grid; gap: 6px; }
@@ -287,6 +292,8 @@ code {
 /* ---- 响应式 ---------------------------------------------------------------- */
 @media (max-width: 700px) {
   .topbar { padding: 13px 16px; }
+  .term-bar .actions { width: 100%; justify-content: flex-end; gap: 6px; }
+  .term-bar .actions button, .term-bar .actions a.button { padding: 7px 10px; font-size: 12.5px; }
   .brand h1 { font-size: 17px; }
   .brand .muted { font-size: 12px; }
   .layout { padding: 16px 12px 36px; gap: 14px; }
